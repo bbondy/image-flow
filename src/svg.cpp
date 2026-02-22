@@ -208,7 +208,7 @@ bool parseIntAttr(const std::unordered_map<std::string, std::string>& attrs, con
     return true;
 }
 
-bool parseViewBox(const std::unordered_map<std::string, std::string>& attrs, int& outW, int& outH) {
+bool parseViewBox(const std::unordered_map<std::string, std::string>& attrs, double& outMinX, double& outMinY, double& outW, double& outH) {
     auto it = attrs.find("viewBox");
     if (it == attrs.end()) {
         return false;
@@ -225,9 +225,11 @@ bool parseViewBox(const std::unordered_map<std::string, std::string>& attrs, int
     if (values[2] <= 0.0 || values[3] <= 0.0) {
         return false;
     }
-    outW = static_cast<int>(std::lround(values[2]));
-    outH = static_cast<int>(std::lround(values[3]));
-    return outW > 0 && outH > 0;
+    outMinX = values[0];
+    outMinY = values[1];
+    outW = values[2];
+    outH = values[3];
+    return true;
 }
 
 bool parseTranslate(const std::unordered_map<std::string, std::string>& attrs, int& outDx, int& outDy) {
@@ -260,6 +262,74 @@ bool parseTranslate(const std::unordered_map<std::string, std::string>& attrs, i
     outDx = static_cast<int>(std::lround(dx));
     outDy = static_cast<int>(std::lround(dy));
     return true;
+}
+
+struct PreserveAspectRatio {
+    bool valid = false;
+    bool none = false;
+    bool slice = false;
+    double alignX = 0.5;
+    double alignY = 0.5;
+};
+
+PreserveAspectRatio parsePreserveAspectRatio(const std::unordered_map<std::string, std::string>& attrs) {
+    PreserveAspectRatio par;
+    auto it = attrs.find("preserveAspectRatio");
+    if (it == attrs.end()) {
+        par.valid = true;
+        return par;
+    }
+
+    std::stringstream ss(it->second);
+    std::string token;
+    if (!(ss >> token)) {
+        par.valid = false;
+        return par;
+    }
+    if (token == "none") {
+        par.valid = true;
+        par.none = true;
+        return par;
+    }
+
+    if (token == "xMinYMin") {
+        par.alignX = 0.0;
+        par.alignY = 0.0;
+    } else if (token == "xMidYMin") {
+        par.alignX = 0.5;
+        par.alignY = 0.0;
+    } else if (token == "xMaxYMin") {
+        par.alignX = 1.0;
+        par.alignY = 0.0;
+    } else if (token == "xMinYMid") {
+        par.alignX = 0.0;
+        par.alignY = 0.5;
+    } else if (token == "xMidYMid") {
+        par.alignX = 0.5;
+        par.alignY = 0.5;
+    } else if (token == "xMaxYMid") {
+        par.alignX = 1.0;
+        par.alignY = 0.5;
+    } else if (token == "xMinYMax") {
+        par.alignX = 0.0;
+        par.alignY = 1.0;
+    } else if (token == "xMidYMax") {
+        par.alignX = 0.5;
+        par.alignY = 1.0;
+    } else if (token == "xMaxYMax") {
+        par.alignX = 1.0;
+        par.alignY = 1.0;
+    } else {
+        par.valid = false;
+        return par;
+    }
+
+    std::string mode;
+    if (ss >> mode) {
+        par.slice = (mode == "slice");
+    }
+    par.valid = true;
+    return par;
 }
 
 bool parseColorAttr(const std::unordered_map<std::string, std::string>& attrs, Color& out) {
@@ -387,17 +457,20 @@ SVGImage SVGImage::load(const std::string& filename) {
     }
     int width = 0;
     int height = 0;
+    double viewMinX = 0.0;
+    double viewMinY = 0.0;
+    double viewW = 0.0;
+    double viewH = 0.0;
+    const bool hasViewBox = parseViewBox(root.attrs, viewMinX, viewMinY, viewW, viewH);
     const bool hasWidth = parseIntAttr(root.attrs, "width", width);
     const bool hasHeight = parseIntAttr(root.attrs, "height", height);
     if (!hasWidth || !hasHeight) {
-        int viewW = 0;
-        int viewH = 0;
-        if (parseViewBox(root.attrs, viewW, viewH)) {
+        if (hasViewBox) {
             if (!hasWidth) {
-                width = viewW;
+                width = static_cast<int>(std::lround(viewW));
             }
             if (!hasHeight) {
-                height = viewH;
+                height = static_cast<int>(std::lround(viewH));
             }
         }
     }
@@ -406,6 +479,36 @@ SVGImage SVGImage::load(const std::string& filename) {
     }
 
     SVGImage image(width, height, Color(255, 255, 255));
+
+    PreserveAspectRatio par = parsePreserveAspectRatio(root.attrs);
+    if (hasViewBox && !par.valid) {
+        throw std::runtime_error("Invalid preserveAspectRatio");
+    }
+    if (!hasViewBox) {
+        par.none = true;
+    }
+
+    double scaleX = 1.0;
+    double scaleY = 1.0;
+    double alignOffsetX = 0.0;
+    double alignOffsetY = 0.0;
+
+    if (hasViewBox) {
+        const double sx = static_cast<double>(width) / viewW;
+        const double sy = static_cast<double>(height) / viewH;
+        if (par.none) {
+            scaleX = sx;
+            scaleY = sy;
+        } else {
+            const double scale = par.slice ? std::max(sx, sy) : std::min(sx, sy);
+            scaleX = scale;
+            scaleY = scale;
+            const double contentW = viewW * scale;
+            const double contentH = viewH * scale;
+            alignOffsetX = (static_cast<double>(width) - contentW) * par.alignX;
+            alignOffsetY = (static_cast<double>(height) - contentH) * par.alignY;
+        }
+    }
 
     std::function<void(const XmlNode&, int, int)> visit = [&](const XmlNode& node, int offsetX, int offsetY) {
         int localDx = 0;
@@ -426,13 +529,37 @@ SVGImage SVGImage::load(const std::string& filename) {
             Color fill;
             const bool hasFill = parseColorAttr(node.attrs, fill);
 
-            const int finalX = (hasX ? rectX : 0) + offsetX;
-            const int finalY = (hasY ? rectY : 0) + offsetY;
+            double x = static_cast<double>(hasX ? rectX : 0);
+            double y = static_cast<double>(hasY ? rectY : 0);
+            double w = static_cast<double>(hasW ? rectW : 0);
+            double h = static_cast<double>(hasH ? rectH : 0);
 
-            if (hasW && hasH && rectW == width && rectH == height && hasFill && finalX == 0 && finalY == 0) {
+            if (hasViewBox) {
+                x = (x - viewMinX) * scaleX + alignOffsetX;
+                y = (y - viewMinY) * scaleY + alignOffsetY;
+                w *= scaleX;
+                h *= scaleY;
+            }
+
+            const double offsetScaledX = static_cast<double>(offsetX) * scaleX;
+            const double offsetScaledY = static_cast<double>(offsetY) * scaleY;
+            const int finalX = static_cast<int>(std::lround(x + offsetScaledX));
+            const int finalY = static_cast<int>(std::lround(y + offsetScaledY));
+            const int finalW = static_cast<int>(std::lround(w));
+            const int finalH = static_cast<int>(std::lround(h));
+
+            if (hasW && hasH && hasFill && finalX == 0 && finalY == 0 && finalW == width && finalH == height) {
                 std::fill(image.m_pixels.begin(), image.m_pixels.end(), fill);
-            } else if (hasW && hasH && hasFill && rectW == 1 && rectH == 1) {
-                image.setPixel(finalX, finalY, fill);
+            } else if (hasW && hasH && hasFill && finalW > 0 && finalH > 0) {
+                const int startX = std::max(0, finalX);
+                const int startY = std::max(0, finalY);
+                const int endX = std::min(width, finalX + finalW);
+                const int endY = std::min(height, finalY + finalH);
+                for (int py = startY; py < endY; ++py) {
+                    for (int px = startX; px < endX; ++px) {
+                        image.setPixel(px, py, fill);
+                    }
+                }
             }
         }
 
