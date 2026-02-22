@@ -2,6 +2,7 @@
 #include "bmp.h"
 #include "gif.h"
 #include "jpg.h"
+#include "layer.h"
 #include "png.h"
 
 #include <cmath>
@@ -126,6 +127,40 @@ void testLayeredSmileyMatchesDirect() {
     const DiffStats s = compareImages(direct, layered);
     require(s.maxAbs == 0, "Layered smiley should match direct smiley pixel-for-pixel");
 }
+
+void testLayerMaskVisibilityControl() {
+    Document doc(2, 1);
+
+    Layer background("Background", 2, 1, PixelRGBA8(10, 20, 30, 255));
+    doc.addLayer(background);
+
+    Layer fg("Foreground", 2, 1, PixelRGBA8(200, 100, 50, 255));
+    fg.enableMask(PixelRGBA8(255, 255, 255, 255));
+    fg.mask().setPixel(1, 0, PixelRGBA8(0, 0, 0, 255));
+    doc.addLayer(fg);
+
+    const ImageBuffer out = doc.composite();
+    const PixelRGBA8 left = out.getPixel(0, 0);
+    const PixelRGBA8 right = out.getPixel(1, 0);
+
+    require(left.r == 200 && left.g == 100 && left.b == 50, "Layer mask should keep fully white mask pixels visible");
+    require(right.r == 10 && right.g == 20 && right.b == 30, "Layer mask should hide fully black mask pixels");
+}
+
+void testLayerMaskCanBeCleared() {
+    Document doc(1, 1);
+    Layer base("Base", 1, 1, PixelRGBA8(0, 0, 0, 255));
+    doc.addLayer(base);
+
+    Layer fg("FG", 1, 1, PixelRGBA8(255, 0, 0, 255));
+    fg.enableMask(PixelRGBA8(0, 0, 0, 255));
+    fg.clearMask();
+    doc.addLayer(fg);
+
+    const ImageBuffer out = doc.composite();
+    const PixelRGBA8 p = out.getPixel(0, 0);
+    require(p.r == 255 && p.g == 0 && p.b == 0, "Clearing a mask should restore full layer visibility");
+}
 } // namespace
 
 int main() {
@@ -134,6 +169,8 @@ int main() {
         testCodecRoundtripAgainstReference();
         testLayerBlendOutput();
         testLayeredSmileyMatchesDirect();
+        testLayerMaskVisibilityControl();
+        testLayerMaskCanBeCleared();
 
         std::cout << "All tests passed\n";
         return 0;

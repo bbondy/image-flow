@@ -63,6 +63,12 @@ float blendChannel(BlendMode mode, float d, float s) {
             return s;
     }
 }
+
+float maskWeight(const PixelRGBA8& maskPixel) {
+    const float alpha = static_cast<float>(maskPixel.a) / 255.0f;
+    const float luma = (static_cast<float>(maskPixel.r) + static_cast<float>(maskPixel.g) + static_cast<float>(maskPixel.b)) / (255.0f * 3.0f);
+    return clamp01(alpha * luma);
+}
 } // namespace
 
 ImageBuffer::ImageBuffer() : m_width(0), m_height(0) {}
@@ -105,7 +111,13 @@ void ImageBuffer::fill(const PixelRGBA8& pixel) {
 }
 
 Layer::Layer()
-    : m_name("Layer"), m_visible(true), m_opacity(1.0f), m_blendMode(BlendMode::Normal), m_offsetX(0), m_offsetY(0) {}
+    : m_name("Layer"),
+      m_visible(true),
+      m_opacity(1.0f),
+      m_blendMode(BlendMode::Normal),
+      m_offsetX(0),
+      m_offsetY(0),
+      m_hasMask(false) {}
 
 Layer::Layer(const std::string& name, int width, int height, const PixelRGBA8& fill)
     : m_name(name),
@@ -114,7 +126,8 @@ Layer::Layer(const std::string& name, int width, int height, const PixelRGBA8& f
       m_blendMode(BlendMode::Normal),
       m_offsetX(0),
       m_offsetY(0),
-      m_image(width, height, fill) {}
+      m_image(width, height, fill),
+      m_hasMask(false) {}
 
 const std::string& Layer::name() const {
     return m_name;
@@ -159,6 +172,34 @@ int Layer::offsetY() const {
 void Layer::setOffset(int x, int y) {
     m_offsetX = x;
     m_offsetY = y;
+}
+
+bool Layer::hasMask() const {
+    return m_hasMask;
+}
+
+void Layer::enableMask(const PixelRGBA8& fill) {
+    m_mask = ImageBuffer(m_image.width(), m_image.height(), fill);
+    m_hasMask = true;
+}
+
+void Layer::clearMask() {
+    m_mask = ImageBuffer();
+    m_hasMask = false;
+}
+
+ImageBuffer& Layer::mask() {
+    if (!m_hasMask) {
+        enableMask();
+    }
+    return m_mask;
+}
+
+const ImageBuffer& Layer::mask() const {
+    if (!m_hasMask) {
+        throw std::logic_error("Layer mask is not enabled");
+    }
+    return m_mask;
 }
 
 ImageBuffer& Layer::image() {
@@ -223,7 +264,10 @@ ImageBuffer Document::composite() const {
                 const PixelRGBA8& src = layer.image().getPixel(sx, sy);
                 PixelRGBA8 dst = out.getPixel(dx, dy);
 
-                const float sa = (static_cast<float>(src.a) / 255.0f) * layer.opacity();
+                float sa = (static_cast<float>(src.a) / 255.0f) * layer.opacity();
+                if (layer.hasMask()) {
+                    sa *= maskWeight(layer.mask().getPixel(sx, sy));
+                }
                 if (sa <= 0.0f) {
                     continue;
                 }

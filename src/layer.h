@@ -70,6 +70,12 @@ public:
     int offsetY() const;
     void setOffset(int x, int y);
 
+    bool hasMask() const;
+    void enableMask(const PixelRGBA8& fill = PixelRGBA8(255, 255, 255, 255));
+    void clearMask();
+    ImageBuffer& mask();
+    const ImageBuffer& mask() const;
+
     ImageBuffer& image();
     const ImageBuffer& image() const;
 
@@ -81,6 +87,8 @@ private:
     int m_offsetX;
     int m_offsetY;
     ImageBuffer m_image;
+    bool m_hasMask;
+    ImageBuffer m_mask;
 };
 
 class Document {
