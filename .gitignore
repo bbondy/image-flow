@@ -1,6 +1,6 @@
 # Build artifacts
 *.o
-src/out/
+build/
 smiley
 tests
 
