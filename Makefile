@@ -26,6 +26,6 @@ $(OBJ_DIR)/%.o: %.cpp
 	$(CXX) $(CXXFLAGS) -Isrc -c $< -o $@
 
 clean:
-	rm -rf $(OBJ_DIR) $(TARGET) $(TEST_TARGET) smiley.bmp smiley_copy.bmp smiley.png smiley_copy.png smiley.jpg smiley_copy.jpg smiley.gif smiley_copy.gif layered_blend.png smiley_direct.png smiley_layered.png smiley_layer_diff.png test_ref.bmp test_ref.png test_ref.jpg test_ref.gif
+	rm -rf build $(TARGET) $(TEST_TARGET)
 
 .PHONY: all clean test

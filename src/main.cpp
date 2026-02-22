@@ -7,49 +7,52 @@
 #include <algorithm>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 
 int main() {
     try {
+        const std::string outDir = "build/output/images";
+        std::filesystem::create_directories(outDir);
         auto absDiff = [](int a, int b) { return a > b ? (a - b) : (b - a); };
 
         BMPImage smileyBmp = api::createSmiley256BMP();
-        if (!smileyBmp.save("smiley.bmp")) {
+        if (!smileyBmp.save(outDir + "/smiley.bmp")) {
             std::cerr << "Failed to write smiley.bmp\n";
             return 1;
         }
 
         PNGImage smileyPng = api::createSmiley256PNG();
-        if (!smileyPng.save("smiley.png")) {
+        if (!smileyPng.save(outDir + "/smiley.png")) {
             std::cerr << "Failed to write smiley.png\n";
             return 1;
         }
 
         JPGImage smileyJpg = api::createSmiley256JPG();
-        if (!smileyJpg.save("smiley.jpg")) {
+        if (!smileyJpg.save(outDir + "/smiley.jpg")) {
             std::cerr << "Failed to write smiley.jpg\n";
             return 1;
         }
 
         GIFImage smileyGif = api::createSmiley256GIF();
-        if (!smileyGif.save("smiley.gif")) {
+        if (!smileyGif.save(outDir + "/smiley.gif")) {
             std::cerr << "Failed to write smiley.gif\n";
             return 1;
         }
 
         PNGImage layeredBlend = api::createLayerBlendDemoPNG();
-        if (!layeredBlend.save("layered_blend.png")) {
+        if (!layeredBlend.save(outDir + "/layered_blend.png")) {
             std::cerr << "Failed to write layered_blend.png\n";
             return 1;
         }
 
         PNGImage directSmiley = api::createSmiley256PNG();
         PNGImage layeredSmiley = api::createSmiley256LayeredPNG();
-        if (!directSmiley.save("smiley_direct.png")) {
+        if (!directSmiley.save(outDir + "/smiley_direct.png")) {
             std::cerr << "Failed to write smiley_direct.png\n";
             return 1;
         }
-        if (!layeredSmiley.save("smiley_layered.png")) {
+        if (!layeredSmiley.save(outDir + "/smiley_layered.png")) {
             std::cerr << "Failed to write smiley_layered.png\n";
             return 1;
         }
@@ -71,32 +74,32 @@ int main() {
                                           static_cast<std::uint8_t>(db)));
             }
         }
-        if (!diff.save("smiley_layer_diff.png")) {
+        if (!diff.save(outDir + "/smiley_layer_diff.png")) {
             std::cerr << "Failed to write smiley_layer_diff.png\n";
             return 1;
         }
         const double meanDiff = static_cast<double>(sumDiff) / static_cast<double>(256 * 256 * 3);
 
-        BMPImage bmpDecoded = BMPImage::load("smiley.bmp");
-        if (!bmpDecoded.save("smiley_copy.bmp")) {
+        BMPImage bmpDecoded = BMPImage::load(outDir + "/smiley.bmp");
+        if (!bmpDecoded.save(outDir + "/smiley_copy.bmp")) {
             std::cerr << "Failed to write smiley_copy.bmp\n";
             return 1;
         }
 
-        PNGImage pngDecoded = PNGImage::load("smiley.png");
-        if (!pngDecoded.save("smiley_copy.png")) {
+        PNGImage pngDecoded = PNGImage::load(outDir + "/smiley.png");
+        if (!pngDecoded.save(outDir + "/smiley_copy.png")) {
             std::cerr << "Failed to write smiley_copy.png\n";
             return 1;
         }
 
-        JPGImage jpgDecoded = JPGImage::load("smiley.jpg");
-        if (!jpgDecoded.save("smiley_copy.jpg")) {
+        JPGImage jpgDecoded = JPGImage::load(outDir + "/smiley.jpg");
+        if (!jpgDecoded.save(outDir + "/smiley_copy.jpg")) {
             std::cerr << "Failed to write smiley_copy.jpg\n";
             return 1;
         }
 
-        GIFImage gifDecoded = GIFImage::load("smiley.gif");
-        if (!gifDecoded.save("smiley_copy.gif")) {
+        GIFImage gifDecoded = GIFImage::load(outDir + "/smiley.gif");
+        if (!gifDecoded.save(outDir + "/smiley_copy.gif")) {
             std::cerr << "Failed to write smiley_copy.gif\n";
             return 1;
         }

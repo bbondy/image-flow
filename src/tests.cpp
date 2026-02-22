@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -71,35 +72,37 @@ void testReferenceSmileyShape() {
 }
 
 void testCodecRoundtripAgainstReference() {
+    const std::string testOutDir = "build/output/test-images";
+    std::filesystem::create_directories(testOutDir);
     PNGImage reference = api::createSmiley256PNG();
 
     BMPImage bmp = api::createSmiley256BMP();
-    require(bmp.save("test_ref.bmp"), "Failed saving BMP in test");
-    BMPImage bmpDecoded = BMPImage::load("test_ref.bmp");
+    require(bmp.save(testOutDir + "/test_ref.bmp"), "Failed saving BMP in test");
+    BMPImage bmpDecoded = BMPImage::load(testOutDir + "/test_ref.bmp");
     {
         const DiffStats s = compareImages(reference, bmpDecoded);
         require(s.maxAbs == 0, "BMP roundtrip must be pixel identical to reference");
     }
 
     PNGImage png = api::createSmiley256PNG();
-    require(png.save("test_ref.png"), "Failed saving PNG in test");
-    PNGImage pngDecoded = PNGImage::load("test_ref.png");
+    require(png.save(testOutDir + "/test_ref.png"), "Failed saving PNG in test");
+    PNGImage pngDecoded = PNGImage::load(testOutDir + "/test_ref.png");
     {
         const DiffStats s = compareImages(reference, pngDecoded);
         require(s.maxAbs == 0, "PNG roundtrip must be pixel identical to reference");
     }
 
     GIFImage gif = api::createSmiley256GIF();
-    require(gif.save("test_ref.gif"), "Failed saving GIF in test");
-    GIFImage gifDecoded = GIFImage::load("test_ref.gif");
+    require(gif.save(testOutDir + "/test_ref.gif"), "Failed saving GIF in test");
+    GIFImage gifDecoded = GIFImage::load(testOutDir + "/test_ref.gif");
     {
         const DiffStats s = compareImages(reference, gifDecoded);
         require(s.maxAbs == 0, "GIF roundtrip must be pixel identical to reference");
     }
 
     JPGImage jpg = api::createSmiley256JPG();
-    require(jpg.save("test_ref.jpg"), "Failed saving JPG in test");
-    JPGImage jpgDecoded = JPGImage::load("test_ref.jpg");
+    require(jpg.save(testOutDir + "/test_ref.jpg"), "Failed saving JPG in test");
+    JPGImage jpgDecoded = JPGImage::load(testOutDir + "/test_ref.jpg");
     {
         const DiffStats s = compareImages(reference, jpgDecoded);
         std::cout << "JPEG diff stats mean=" << s.meanAbs << " max=" << s.maxAbs << "\n";
