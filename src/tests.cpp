@@ -161,6 +161,38 @@ void testLayerMaskCanBeCleared() {
     const PixelRGBA8 p = out.getPixel(0, 0);
     require(p.r == 255 && p.g == 0 && p.b == 0, "Clearing a mask should restore full layer visibility");
 }
+
+void testGroupedLayerOffsetAndVisibility() {
+    Document doc(3, 1);
+    doc.addLayer(Layer("Background", 3, 1, PixelRGBA8(5, 5, 5, 255)));
+
+    LayerGroup group("Group A");
+    group.setOffset(1, 0);
+    group.setVisible(true);
+    group.addLayer(Layer("Dot", 1, 1, PixelRGBA8(240, 0, 0, 255)));
+    doc.addGroup(group);
+
+    ImageBuffer out = doc.composite();
+    require(out.getPixel(0, 0).r == 5, "Group offset should not affect untouched pixels");
+    require(out.getPixel(1, 0).r == 240, "Grouped layer should render with group offset");
+
+    doc.node(1).asGroup().setVisible(false);
+    out = doc.composite();
+    require(out.getPixel(1, 0).r == 5, "Hidden groups should not render");
+}
+
+void testGroupedLayerOpacityAffectsComposite() {
+    Document doc(1, 1);
+    doc.addLayer(Layer("Background", 1, 1, PixelRGBA8(0, 0, 0, 255)));
+
+    LayerGroup group("Fade Group");
+    group.setOpacity(0.5f);
+    group.addLayer(Layer("White Pixel", 1, 1, PixelRGBA8(255, 255, 255, 255)));
+    doc.addGroup(group);
+
+    const PixelRGBA8 p = doc.composite().getPixel(0, 0);
+    require(p.r == 188 && p.g == 188 && p.b == 188, "Group opacity should apply to the flattened group result");
+}
 } // namespace
 
 int main() {
@@ -171,6 +203,8 @@ int main() {
         testLayeredSmileyMatchesDirect();
         testLayerMaskVisibilityControl();
         testLayerMaskCanBeCleared();
+        testGroupedLayerOffsetAndVisibility();
+        testGroupedLayerOpacityAffectsComposite();
 
         std::cout << "All tests passed\n";
         return 0;
