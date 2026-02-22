@@ -1,9 +1,10 @@
 CXX := c++
 CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -O2
+ARCH := $(shell uname -m)
 
 TARGET := smiley
 TEST_TARGET := tests
-OBJ_DIR := build/intermediate
+OBJ_DIR := build/intermediate/$(ARCH)
 CORE_SRCS := src/bmp.cpp src/png.cpp src/jpg.cpp src/gif.cpp src/drawable.cpp src/api.cpp src/layer.cpp
 APP_SRCS := src/main.cpp $(CORE_SRCS)
 TEST_SRCS := src/tests.cpp $(CORE_SRCS)
