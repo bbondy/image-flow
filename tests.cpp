@@ -3,7 +3,6 @@
 #include "gif.h"
 #include "jpg.h"
 #include "png.h"
-#include "steganography.h"
 
 #include <cmath>
 #include <cstdint>
@@ -109,49 +108,6 @@ void testCodecRoundtripAgainstReference() {
     }
 }
 
-void testSteganography() {
-    const std::string message = "Hello world";
-
-    BMPImage bmp = api::createSmiley256BMP();
-    PNGImage png = api::createSmiley256PNG();
-    JPGImage jpg = api::createSmiley256JPG();
-    GIFImage gif = api::createSmiley256GIF();
-
-    {
-        Steganography s(bmp);
-        require(s.encodeMessage(message), "Stego encode failed for BMP object");
-        require(s.decodeMessage() == message, "Stego decode mismatch for BMP object");
-    }
-    {
-        Steganography s(png);
-        require(s.encodeMessage(message), "Stego encode failed for PNG object");
-        require(s.decodeMessage() == message, "Stego decode mismatch for PNG object");
-    }
-    {
-        Steganography s(jpg);
-        require(s.encodeMessage(message), "Stego encode failed for JPG object");
-        require(s.decodeMessage() == message, "Stego decode mismatch for JPG object");
-    }
-    {
-        Steganography s(gif);
-        require(s.encodeMessage(message), "Stego encode failed for GIF object");
-        require(s.decodeMessage() == message, "Stego decode mismatch for GIF object");
-    }
-
-    PNGImage persisted = api::createSmiley256PNG();
-    Steganography writer(persisted);
-    require(writer.encodeMessage(message), "Stego encode failed for persisted PNG");
-    require(persisted.save("test_stego.png"), "Failed saving stego PNG in test");
-
-    PNGImage loaded = PNGImage::load("test_stego.png");
-    Steganography reader(loaded);
-    require(reader.decodeMessage() == message, "Stego decode mismatch after PNG save/load");
-
-    BMPImage tiny(1, 1, Color(0, 0, 0));
-    Steganography tinyStego(tiny);
-    require(!tinyStego.encodeMessage("A"), "Tiny image should not fit even 1-byte message");
-}
-
 void testLayerBlendOutput() {
     PNGImage base = api::createSmiley256PNG();
     PNGImage blended = api::createLayerBlendDemoPNG();
@@ -173,7 +129,6 @@ int main() {
     try {
         testReferenceSmileyShape();
         testCodecRoundtripAgainstReference();
-        testSteganography();
         testLayerBlendOutput();
         testLayeredSmileyMatchesDirect();
 

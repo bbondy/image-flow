@@ -3,7 +3,6 @@
 #include "gif.h"
 #include "jpg.h"
 #include "png.h"
-#include "steganography.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -12,54 +11,27 @@
 
 int main() {
     try {
-        const std::string hidden = "Hello world";
         auto absDiff = [](int a, int b) { return a > b ? (a - b) : (b - a); };
 
-        auto verifyStego = [&](const char* label, RasterImage& image) {
-            Steganography stego(image);
-            if (!stego.encodeMessage(hidden)) {
-                std::cerr << "Failed to encode steganography message into " << label << "\n";
-                return false;
-            }
-            const std::string extracted = stego.decodeMessage();
-            if (extracted != hidden) {
-                std::cerr << "Steganography decode mismatch for " << label << "\n";
-                return false;
-            }
-            return true;
-        };
-
         BMPImage smileyBmp = api::createSmiley256BMP();
-        if (!verifyStego("BMP image object", smileyBmp)) {
-            return 1;
-        }
         if (!smileyBmp.save("smiley.bmp")) {
             std::cerr << "Failed to write smiley.bmp\n";
             return 1;
         }
 
         PNGImage smileyPng = api::createSmiley256PNG();
-        if (!verifyStego("PNG image object", smileyPng)) {
-            return 1;
-        }
         if (!smileyPng.save("smiley.png")) {
             std::cerr << "Failed to write smiley.png\n";
             return 1;
         }
 
         JPGImage smileyJpg = api::createSmiley256JPG();
-        if (!verifyStego("JPG image object", smileyJpg)) {
-            return 1;
-        }
         if (!smileyJpg.save("smiley.jpg")) {
             std::cerr << "Failed to write smiley.jpg\n";
             return 1;
         }
 
         GIFImage smileyGif = api::createSmiley256GIF();
-        if (!verifyStego("GIF image object", smileyGif)) {
-            return 1;
-        }
         if (!smileyGif.save("smiley.gif")) {
             std::cerr << "Failed to write smiley.gif\n";
             return 1;
@@ -129,32 +101,10 @@ int main() {
             return 1;
         }
 
-        PNGImage stegoImage = api::createSmiley256PNG();
-        Steganography stego(stegoImage);
-        if (!stego.encodeMessage(hidden)) {
-            std::cerr << "Failed to encode steganography message into persisted PNG\n";
-            return 1;
-        }
-        if (!stegoImage.save("smiley_stego.png")) {
-            std::cerr << "Failed to write smiley_stego.png\n";
-            return 1;
-        }
-
-        PNGImage stegoLoaded = PNGImage::load("smiley_stego.png");
-        Steganography stegoReader(stegoLoaded);
-        const std::string extracted = stegoReader.decodeMessage();
-
-        if (extracted != hidden) {
-            std::cerr << "Steganography decode mismatch\n";
-            return 1;
-        }
-
         std::cout << "Wrote smiley.bmp, smiley.png, smiley.jpg, smiley.gif, "
-                     "smiley_copy.bmp, smiley_copy.png, smiley_copy.jpg, smiley_copy.gif, smiley_stego.png, layered_blend.png, "
+                     "smiley_copy.bmp, smiley_copy.png, smiley_copy.jpg, smiley_copy.gif, layered_blend.png, "
                      "smiley_direct.png, smiley_layered.png, and smiley_layer_diff.png ("
                   << bmpDecoded.width() << "x" << bmpDecoded.height() << ")\n";
-        std::cout << "Steganography extracted message: " << extracted << "\n";
-        std::cout << "Steganography verified on BMP/PNG/JPG/GIF image objects\n";
         std::cout << "Layered vs direct smiley diff: mean=" << meanDiff << " max=" << maxDiff << "\n";
     } catch (const std::exception& ex) {
         std::cerr << "Error: " << ex.what() << '\n';
