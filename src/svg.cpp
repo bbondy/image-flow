@@ -1,5 +1,6 @@
 #include "svg.h"
 
+#include "layer.h"
 #include "transform.h"
 
 #include <algorithm>
@@ -484,7 +485,8 @@ bool SVGImage::save(const std::string& filename) const {
     return static_cast<bool>(out);
 }
 
-SVGImage SVGImage::load(const std::string& filename) {
+namespace {
+SVGImage loadSVGImpl(const std::string& filename, int forcedWidth, int forcedHeight, bool useForcedSize) {
     std::ifstream in(filename);
     if (!in) {
         throw std::runtime_error("Cannot open SVG file: " + filename);
@@ -506,20 +508,28 @@ SVGImage SVGImage::load(const std::string& filename) {
     double viewW = 0.0;
     double viewH = 0.0;
     const bool hasViewBox = parseViewBox(root.attrs, viewMinX, viewMinY, viewW, viewH);
-    const bool hasWidth = parseIntAttr(root.attrs, "width", width);
-    const bool hasHeight = parseIntAttr(root.attrs, "height", height);
-    if (!hasWidth || !hasHeight) {
-        if (hasViewBox) {
-            if (!hasWidth) {
-                width = static_cast<int>(std::lround(viewW));
-            }
-            if (!hasHeight) {
-                height = static_cast<int>(std::lround(viewH));
+    if (useForcedSize) {
+        if (forcedWidth <= 0 || forcedHeight <= 0) {
+            throw std::runtime_error("Invalid forced raster size");
+        }
+        width = forcedWidth;
+        height = forcedHeight;
+    } else {
+        const bool hasWidth = parseIntAttr(root.attrs, "width", width);
+        const bool hasHeight = parseIntAttr(root.attrs, "height", height);
+        if (!hasWidth || !hasHeight) {
+            if (hasViewBox) {
+                if (!hasWidth) {
+                    width = static_cast<int>(std::lround(viewW));
+                }
+                if (!hasHeight) {
+                    height = static_cast<int>(std::lround(viewH));
+                }
             }
         }
-    }
-    if (width <= 0 || height <= 0) {
-        throw std::runtime_error("Invalid SVG dimensions (missing width/height or viewBox)");
+        if (width <= 0 || height <= 0) {
+            throw std::runtime_error("Invalid SVG dimensions (missing width/height or viewBox)");
+        }
     }
 
     SVGImage image(width, height, Color(255, 255, 255));
@@ -600,7 +610,11 @@ SVGImage SVGImage::load(const std::string& filename) {
                 int endY = std::min(height, static_cast<int>(std::ceil(maxY)));
 
                 if (startX == 0 && startY == 0 && endX == width && endY == height && combinedTransform.isIdentity()) {
-                    std::fill(image.m_pixels.begin(), image.m_pixels.end(), fill);
+                    for (int py = 0; py < height; ++py) {
+                        for (int px = 0; px < width; ++px) {
+                            image.setPixel(px, py, fill);
+                        }
+                    }
                 } else {
                     for (int py = startY; py < endY; ++py) {
                         for (int px = startX; px < endX; ++px) {
@@ -622,4 +636,48 @@ SVGImage SVGImage::load(const std::string& filename) {
     visit(root, Transform2D::identity());
 
     return image;
+}
+} // namespace
+
+SVGImage SVGImage::load(const std::string& filename) {
+    return loadSVGImpl(filename, 0, 0, false);
+}
+
+SVGImage SVGImage::load(const std::string& filename, int rasterWidth, int rasterHeight) {
+    return loadSVGImpl(filename, rasterWidth, rasterHeight, true);
+}
+
+void copyToRasterImage(const SVGImage& source, RasterImage& destination) {
+    if (source.width() != destination.width() || source.height() != destination.height()) {
+        throw std::invalid_argument("copyToRasterImage(SVGImage, RasterImage) dimensions must match");
+    }
+
+    for (int y = 0; y < source.height(); ++y) {
+        for (int x = 0; x < source.width(); ++x) {
+            destination.setPixel(x, y, source.getPixel(x, y));
+        }
+    }
+}
+
+void copyToLayer(const SVGImage& source, Layer& destination, std::uint8_t alpha) {
+    if (source.width() != destination.image().width() || source.height() != destination.image().height()) {
+        throw std::invalid_argument("copyToLayer(SVGImage, Layer) dimensions must match");
+    }
+
+    for (int y = 0; y < source.height(); ++y) {
+        for (int x = 0; x < source.width(); ++x) {
+            const Color& p = source.getPixel(x, y);
+            destination.image().setPixel(x, y, PixelRGBA8(p.r, p.g, p.b, alpha));
+        }
+    }
+}
+
+void rasterizeSVGFileToRaster(const std::string& filename, RasterImage& destination) {
+    const SVGImage source = SVGImage::load(filename, destination.width(), destination.height());
+    copyToRasterImage(source, destination);
+}
+
+void rasterizeSVGFileToLayer(const std::string& filename, Layer& destination, std::uint8_t alpha) {
+    const SVGImage source = SVGImage::load(filename, destination.image().width(), destination.image().height());
+    copyToLayer(source, destination, alpha);
 }

@@ -58,6 +58,12 @@ int main() {
             std::cerr << "Failed to write smiley.svg\n";
             return 1;
         }
+        PNGImage svgRasterizedPng(512, 512, Color(255, 255, 255));
+        rasterizeSVGFileToRaster(outDir + "/smiley.svg", svgRasterizedPng);
+        if (!svgRasterizedPng.save(outDir + "/smiley_svg_rasterized_512.png")) {
+            std::cerr << "Failed to write smiley_svg_rasterized_512.png\n";
+            return 1;
+        }
 
         PNGImage layeredBlend = example_api::createLayerBlendDemoPNG();
         if (!layeredBlend.save(outDir + "/layered_blend.png")) {
@@ -138,7 +144,7 @@ int main() {
         }
 
         std::cout << "Wrote smiley.bmp, smiley.png, smiley.jpg, smiley.gif, "
-                     "smiley.svg, smiley_copy.bmp, smiley_copy.png, smiley_copy.jpg, smiley_copy.gif, "
+                     "smiley.svg, smiley_svg_rasterized_512.png, smiley_copy.bmp, smiley_copy.png, smiley_copy.jpg, smiley_copy.gif, "
                      "smiley_copy.svg, layered_blend.png, smiley_direct.png, smiley_layered.png, and smiley_layer_diff.png ("
                   << bmpDecoded.width() << "x" << bmpDecoded.height() << ")\n";
         std::cout << "Layered vs direct smiley diff: mean=" << meanDiff << " max=" << maxDiff << "\n";

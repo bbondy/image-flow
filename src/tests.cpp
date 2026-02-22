@@ -171,6 +171,68 @@ void testSVGTranslateTransform() {
     require(p.r == 5 && p.g == 10 && p.b == 15, "translate() should offset rect position");
 }
 
+void testSVGRasterizeToRequestedSize() {
+    const std::string testOutDir = "build/output/test-images";
+    std::filesystem::create_directories(testOutDir);
+    const std::string svgPath = testOutDir + "/test_rasterize_size.svg";
+
+    std::ofstream out(svgPath);
+    require(static_cast<bool>(out), "Failed to open rasterize SVG for writing");
+    out << "<svg viewBox=\"0 0 10 10\" preserveAspectRatio=\"none\">"
+           "<rect x=\"0\" y=\"0\" width=\"5\" height=\"10\" fill=\"rgb(255,0,0)\"/>"
+           "<rect x=\"5\" y=\"0\" width=\"5\" height=\"10\" fill=\"rgb(0,0,255)\"/>"
+           "</svg>";
+    out.close();
+
+    SVGImage rasterized = SVGImage::load(svgPath, 40, 20);
+    require(rasterized.width() == 40 && rasterized.height() == 20, "Rasterized SVG should use requested dimensions");
+
+    const Color left = rasterized.getPixel(5, 10);
+    const Color right = rasterized.getPixel(35, 10);
+    require(left.r == 255 && left.g == 0 && left.b == 0, "Left half should rasterize as red");
+    require(right.r == 0 && right.g == 0 && right.b == 255, "Right half should rasterize as blue");
+}
+
+void testRasterizeSVGFileToRasterImage() {
+    const std::string testOutDir = "build/output/test-images";
+    std::filesystem::create_directories(testOutDir);
+    const std::string svgPath = testOutDir + "/test_raster_to_raster.svg";
+
+    std::ofstream out(svgPath);
+    require(static_cast<bool>(out), "Failed to open raster-to-raster SVG for writing");
+    out << "<svg viewBox=\"0 0 2 1\" preserveAspectRatio=\"none\">"
+           "<rect x=\"0\" y=\"0\" width=\"1\" height=\"1\" fill=\"rgb(10,20,30)\"/>"
+           "<rect x=\"1\" y=\"0\" width=\"1\" height=\"1\" fill=\"rgb(200,210,220)\"/>"
+           "</svg>";
+    out.close();
+
+    PNGImage raster(20, 10, Color(0, 0, 0));
+    rasterizeSVGFileToRaster(svgPath, raster);
+    const Color left = raster.getPixel(2, 5);
+    const Color right = raster.getPixel(18, 5);
+    require(left.r == 10 && left.g == 20 && left.b == 30, "rasterizeSVGFileToRaster should write left region");
+    require(right.r == 200 && right.g == 210 && right.b == 220, "rasterizeSVGFileToRaster should write right region");
+}
+
+void testRasterizeSVGFileToLayer() {
+    const std::string testOutDir = "build/output/test-images";
+    std::filesystem::create_directories(testOutDir);
+    const std::string svgPath = testOutDir + "/test_raster_to_layer.svg";
+
+    std::ofstream out(svgPath);
+    require(static_cast<bool>(out), "Failed to open raster-to-layer SVG for writing");
+    out << "<svg width=\"4\" height=\"4\">"
+           "<rect x=\"1\" y=\"1\" width=\"2\" height=\"2\" fill=\"rgb(12,34,56)\"/>"
+           "</svg>";
+    out.close();
+
+    Layer layer("Vector Layer", 4, 4, PixelRGBA8(0, 0, 0, 0));
+    rasterizeSVGFileToLayer(svgPath, layer, 222);
+    const PixelRGBA8 center = layer.image().getPixel(2, 2);
+    require(center.r == 12 && center.g == 34 && center.b == 56, "rasterizeSVGFileToLayer should copy RGB");
+    require(center.a == 222, "rasterizeSVGFileToLayer should set layer alpha");
+}
+
 void testLayerBlendOutput() {
     PNGImage base = example_api::createSmiley256PNG();
     PNGImage blended = example_api::createLayerBlendDemoPNG();
@@ -333,6 +395,9 @@ int main() {
         testCodecRoundtripAgainstReference();
         testSVGViewBoxFallback();
         testSVGTranslateTransform();
+        testSVGRasterizeToRequestedSize();
+        testRasterizeSVGFileToRasterImage();
+        testRasterizeSVGFileToLayer();
         testLayerTransformRotation();
         testGroupTransformTranslate();
         testLayerBlendOutput();
