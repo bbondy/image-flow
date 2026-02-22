@@ -210,6 +210,33 @@ void testLayerMaskCanBeCleared() {
     require(p.r == 255 && p.g == 0 && p.b == 0, "Clearing a mask should restore full layer visibility");
 }
 
+void testLayerTransformRotation() {
+    Document doc(5, 5);
+    Layer layer("Dot", 5, 5, PixelRGBA8(0, 0, 0, 0));
+    layer.image().setPixel(3, 2, PixelRGBA8(255, 0, 0, 255));
+    layer.transform().setRotationDegrees(90.0, 2.0, 2.0);
+    doc.addLayer(layer);
+
+    const ImageBuffer out = doc.composite();
+    const PixelRGBA8 p = out.getPixel(1, 3);
+    require(p.r == 255 && p.g == 0 && p.b == 0, "Rotation transform should rotate pixels around pivot");
+}
+
+void testGroupTransformTranslate() {
+    Document doc(4, 4);
+    LayerGroup group("Group");
+    group.transform().setTranslation(1.0, 1.0);
+
+    Layer layer("Dot", 4, 4, PixelRGBA8(0, 0, 0, 0));
+    layer.image().setPixel(0, 0, PixelRGBA8(0, 255, 0, 255));
+    group.addLayer(layer);
+    doc.addGroup(group);
+
+    const ImageBuffer out = doc.composite();
+    const PixelRGBA8 p = out.getPixel(1, 1);
+    require(p.g == 255, "Group translation should offset child layers");
+}
+
 void testGroupedLayerOffsetAndVisibility() {
     Document doc(3, 1);
     doc.addLayer(Layer("Background", 3, 1, PixelRGBA8(5, 5, 5, 255)));
@@ -253,8 +280,10 @@ void testIFLOWSerializationRoundtripPreservesStack() {
     LayerGroup faceGroup("Face Group");
     faceGroup.setOffset(1, 0);
     faceGroup.setOpacity(0.8f);
+    faceGroup.transform().setTranslation(0.0, 1.0);
 
     Layer fill("Fill", 2, 2, PixelRGBA8(220, 180, 80, 255));
+    fill.transform().setTranslation(1.0, 0.0);
     fill.enableMask(PixelRGBA8(255, 255, 255, 255));
     fill.mask().setPixel(1, 1, PixelRGBA8(0, 0, 0, 255));
     faceGroup.addLayer(fill);
@@ -293,6 +322,8 @@ int main() {
         testCodecRoundtripAgainstReference();
         testSVGViewBoxFallback();
         testSVGTranslateTransform();
+        testLayerTransformRotation();
+        testGroupTransformTranslate();
         testLayerBlendOutput();
         testLayeredSmileyMatchesDirect();
         testLayerMaskVisibilityControl();

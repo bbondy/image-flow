@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -109,23 +110,57 @@ void compositePixel(PixelRGBA8& dst, const PixelRGBA8& src, BlendMode mode, floa
     dst = PixelRGBA8(toByte(linearToSrgb(outR)), toByte(linearToSrgb(outG)), toByte(linearToSrgb(outB)), toByte(outA));
 }
 
-void compositeLayerOnto(ImageBuffer& out, const Layer& layer, int parentOffsetX, int parentOffsetY) {
+Transform2D combineTransform(const Transform2D& parent, int offsetX, int offsetY, const Transform2D& local) {
+    Transform2D combined = parent;
+    combined *= Transform2D::translation(static_cast<double>(offsetX), static_cast<double>(offsetY));
+    combined *= local;
+    return combined;
+}
+
+void compositeLayerOnto(ImageBuffer& out, const Layer& layer, const Transform2D& parentTransform) {
     if (!layer.visible() || layer.opacity() <= 0.0f) {
         return;
     }
 
-    const int layerOriginX = parentOffsetX + layer.offsetX();
-    const int layerOriginY = parentOffsetY + layer.offsetY();
+    const Transform2D transform = combineTransform(parentTransform, layer.offsetX(), layer.offsetY(), layer.transform());
 
-    for (int sy = 0; sy < layer.image().height(); ++sy) {
-        const int dy = sy + layerOriginY;
-        if (dy < 0 || dy >= out.height()) {
-            continue;
-        }
+    const int srcW = layer.image().width();
+    const int srcH = layer.image().height();
 
-        for (int sx = 0; sx < layer.image().width(); ++sx) {
-            const int dx = sx + layerOriginX;
-            if (dx < 0 || dx >= out.width()) {
+    double minX = std::numeric_limits<double>::max();
+    double minY = std::numeric_limits<double>::max();
+    double maxX = std::numeric_limits<double>::lowest();
+    double maxY = std::numeric_limits<double>::lowest();
+
+    const std::pair<double, double> corners[4] = {
+        transform.apply(0.0, 0.0),
+        transform.apply(static_cast<double>(srcW), 0.0),
+        transform.apply(0.0, static_cast<double>(srcH)),
+        transform.apply(static_cast<double>(srcW), static_cast<double>(srcH))};
+
+    for (const auto& c : corners) {
+        minX = std::min(minX, c.first);
+        minY = std::min(minY, c.second);
+        maxX = std::max(maxX, c.first);
+        maxY = std::max(maxY, c.second);
+    }
+
+    int startX = static_cast<int>(std::floor(minX));
+    int startY = static_cast<int>(std::floor(minY));
+    int endX = static_cast<int>(std::ceil(maxX));
+    int endY = static_cast<int>(std::ceil(maxY));
+
+    startX = std::max(startX, 0);
+    startY = std::max(startY, 0);
+    endX = std::min(endX, out.width());
+    endY = std::min(endY, out.height());
+
+    for (int dy = startY; dy < endY; ++dy) {
+        for (int dx = startX; dx < endX; ++dx) {
+            const auto srcPos = transform.applyInverse(static_cast<double>(dx) + 0.5, static_cast<double>(dy) + 0.5);
+            const int sx = static_cast<int>(std::floor(srcPos.first));
+            const int sy = static_cast<int>(std::floor(srcPos.second));
+            if (!layer.image().inBounds(sx, sy)) {
                 continue;
             }
 
@@ -154,9 +189,9 @@ void compositeBufferOnto(ImageBuffer& out, const ImageBuffer& src, BlendMode mod
     }
 }
 
-void compositeNodeOnto(ImageBuffer& out, const LayerNode& node, int parentOffsetX, int parentOffsetY) {
+void compositeNodeOnto(ImageBuffer& out, const LayerNode& node, const Transform2D& parentTransform) {
     if (node.isLayer()) {
-        compositeLayerOnto(out, node.asLayer(), parentOffsetX, parentOffsetY);
+        compositeLayerOnto(out, node.asLayer(), parentTransform);
         return;
     }
 
@@ -166,11 +201,10 @@ void compositeNodeOnto(ImageBuffer& out, const LayerNode& node, int parentOffset
     }
 
     ImageBuffer groupSurface(out.width(), out.height(), PixelRGBA8(0, 0, 0, 0));
-    const int groupOffsetX = parentOffsetX + group.offsetX();
-    const int groupOffsetY = parentOffsetY + group.offsetY();
+    const Transform2D groupTransform = combineTransform(parentTransform, group.offsetX(), group.offsetY(), group.transform());
 
     for (std::size_t i = 0; i < group.nodeCount(); ++i) {
-        compositeNodeOnto(groupSurface, group.node(i), groupOffsetX, groupOffsetY);
+        compositeNodeOnto(groupSurface, group.node(i), groupTransform);
     }
 
     compositeBufferOnto(out, groupSurface, group.blendMode(), group.opacity());
@@ -569,7 +603,7 @@ ImageBuffer Document::composite() const {
     ImageBuffer out(m_width, m_height, PixelRGBA8(0, 0, 0, 0));
 
     for (std::size_t i = 0; i < m_root.nodeCount(); ++i) {
-        compositeNodeOnto(out, m_root.node(i), 0, 0);
+        compositeNodeOnto(out, m_root.node(i), Transform2D::identity());
     }
 
     return out;
@@ -599,9 +633,15 @@ void copyToRasterImage(const ImageBuffer& source, RasterImage& destination) {
     }
 }
 
+void Layer::setImageFromRaster(const RasterImage& source, std::uint8_t alpha) {
+    m_image = fromRasterImage(source, alpha);
+    m_hasMask = false;
+    m_mask = ImageBuffer();
+}
+
 namespace {
 constexpr char kIFLOWMagic[8] = {'I', 'F', 'L', 'O', 'W', '0', '1', '\0'};
-constexpr std::uint32_t kIFLOWVersion = 1;
+constexpr std::uint32_t kIFLOWVersion = 2;
 
 template <typename T>
 void writeBinary(std::ostream& out, const T& value) {
@@ -703,6 +743,12 @@ void writeLayer(std::ostream& out, const Layer& layer) {
     writeBinary(out, blendModeToInt(layer.blendMode()));
     writeBinary(out, static_cast<std::int32_t>(layer.offsetX()));
     writeBinary(out, static_cast<std::int32_t>(layer.offsetY()));
+    writeBinary(out, static_cast<float>(layer.transform().a()));
+    writeBinary(out, static_cast<float>(layer.transform().b()));
+    writeBinary(out, static_cast<float>(layer.transform().c()));
+    writeBinary(out, static_cast<float>(layer.transform().d()));
+    writeBinary(out, static_cast<float>(layer.transform().tx()));
+    writeBinary(out, static_cast<float>(layer.transform().ty()));
     writeImageBuffer(out, layer.image());
     writeBinary(out, static_cast<std::uint8_t>(layer.hasMask() ? 1 : 0));
     if (layer.hasMask()) {
@@ -710,13 +756,23 @@ void writeLayer(std::ostream& out, const Layer& layer) {
     }
 }
 
-Layer readLayer(std::istream& in) {
+Layer readLayer(std::istream& in, std::uint32_t version) {
     const std::string name = readString(in);
     const bool visible = readBinary<std::uint8_t>(in) != 0;
     const float opacity = readBinary<float>(in);
     const BlendMode blendMode = intToBlendMode(readBinary<std::int32_t>(in));
     const int offsetX = readBinary<std::int32_t>(in);
     const int offsetY = readBinary<std::int32_t>(in);
+    Transform2D transform;
+    if (version >= 2) {
+        const double a = readBinary<float>(in);
+        const double b = readBinary<float>(in);
+        const double c = readBinary<float>(in);
+        const double d = readBinary<float>(in);
+        const double tx = readBinary<float>(in);
+        const double ty = readBinary<float>(in);
+        transform = Transform2D::fromMatrix(a, b, c, d, tx, ty);
+    }
     ImageBuffer image = readImageBuffer(in);
     const bool hasMask = readBinary<std::uint8_t>(in) != 0;
 
@@ -725,6 +781,7 @@ Layer readLayer(std::istream& in) {
     layer.setOpacity(opacity);
     layer.setBlendMode(blendMode);
     layer.setOffset(offsetX, offsetY);
+    layer.transform() = transform;
     layer.image() = image;
 
     if (hasMask) {
@@ -746,6 +803,12 @@ void writeGroup(std::ostream& out, const LayerGroup& group) {
     writeBinary(out, blendModeToInt(group.blendMode()));
     writeBinary(out, static_cast<std::int32_t>(group.offsetX()));
     writeBinary(out, static_cast<std::int32_t>(group.offsetY()));
+    writeBinary(out, static_cast<float>(group.transform().a()));
+    writeBinary(out, static_cast<float>(group.transform().b()));
+    writeBinary(out, static_cast<float>(group.transform().c()));
+    writeBinary(out, static_cast<float>(group.transform().d()));
+    writeBinary(out, static_cast<float>(group.transform().tx()));
+    writeBinary(out, static_cast<float>(group.transform().ty()));
     writeBinary(out, static_cast<std::uint32_t>(group.nodeCount()));
 
     for (std::size_t i = 0; i < group.nodeCount(); ++i) {
@@ -760,20 +823,29 @@ void writeGroup(std::ostream& out, const LayerGroup& group) {
     }
 }
 
-LayerGroup readGroup(std::istream& in) {
+LayerGroup readGroup(std::istream& in, std::uint32_t version) {
     LayerGroup group(readString(in));
     group.setVisible(readBinary<std::uint8_t>(in) != 0);
     group.setOpacity(readBinary<float>(in));
     group.setBlendMode(intToBlendMode(readBinary<std::int32_t>(in)));
     group.setOffset(readBinary<std::int32_t>(in), readBinary<std::int32_t>(in));
+    if (version >= 2) {
+        const double a = readBinary<float>(in);
+        const double b = readBinary<float>(in);
+        const double c = readBinary<float>(in);
+        const double d = readBinary<float>(in);
+        const double tx = readBinary<float>(in);
+        const double ty = readBinary<float>(in);
+        group.transform() = Transform2D::fromMatrix(a, b, c, d, tx, ty);
+    }
 
     const std::uint32_t nodeCount = readBinary<std::uint32_t>(in);
     for (std::uint32_t i = 0; i < nodeCount; ++i) {
         const std::uint8_t nodeType = readBinary<std::uint8_t>(in);
         if (nodeType == 0) {
-            group.addLayer(readLayer(in));
+            group.addLayer(readLayer(in, version));
         } else if (nodeType == 1) {
-            group.addGroup(readGroup(in));
+            group.addGroup(readGroup(in, version));
         } else {
             throw std::runtime_error("Invalid IFLOW node type");
         }
@@ -820,7 +892,7 @@ Document loadDocumentIFLOW(const std::string& path) {
     }
 
     const std::uint32_t version = readBinary<std::uint32_t>(in);
-    if (version != kIFLOWVersion) {
+    if (version != kIFLOWVersion && version != 1) {
         throw std::runtime_error("Unsupported IFLOW version");
     }
 
@@ -831,6 +903,6 @@ Document loadDocumentIFLOW(const std::string& path) {
     }
 
     Document document(width, height);
-    document.rootGroup() = readGroup(in);
+    document.rootGroup() = readGroup(in, version);
     return document;
 }

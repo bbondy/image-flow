@@ -2,6 +2,7 @@
 #define LAYER_H
 
 #include "image.h"
+#include "transform.h"
 
 #include <cstdint>
 #include <memory>
@@ -50,7 +51,7 @@ private:
     std::vector<PixelRGBA8> m_pixels;
 };
 
-class Layer {
+class Layer : public Transformable {
 public:
     Layer();
     Layer(const std::string& name, int width, int height, const PixelRGBA8& fill = PixelRGBA8(0, 0, 0, 0));
@@ -79,6 +80,7 @@ public:
 
     ImageBuffer& image();
     const ImageBuffer& image() const;
+    void setImageFromRaster(const RasterImage& source, std::uint8_t alpha = 255);
 
 private:
     std::string m_name;
@@ -125,7 +127,7 @@ private:
     std::unique_ptr<LayerGroup> m_group;
 };
 
-class LayerGroup {
+class LayerGroup : public Transformable {
 public:
     LayerGroup();
     explicit LayerGroup(const std::string& name);
