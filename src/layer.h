@@ -198,5 +198,7 @@ private:
 
 ImageBuffer fromRasterImage(const RasterImage& source, std::uint8_t alpha = 255);
 void copyToRasterImage(const ImageBuffer& source, RasterImage& destination);
+bool saveDocumentIFLOW(const Document& document, const std::string& path);
+Document loadDocumentIFLOW(const std::string& path);
 
 #endif

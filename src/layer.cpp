@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <stdexcept>
 
 namespace {
@@ -596,4 +597,240 @@ void copyToRasterImage(const ImageBuffer& source, RasterImage& destination) {
             destination.setPixel(x, y, Color(p.r, p.g, p.b));
         }
     }
+}
+
+namespace {
+constexpr char kIFLOWMagic[8] = {'I', 'F', 'L', 'O', 'W', '0', '1', '\0'};
+constexpr std::uint32_t kIFLOWVersion = 1;
+
+template <typename T>
+void writeBinary(std::ostream& out, const T& value) {
+    out.write(reinterpret_cast<const char*>(&value), sizeof(T));
+    if (!out.good()) {
+        throw std::runtime_error("Failed writing IFLOW binary payload");
+    }
+}
+
+template <typename T>
+T readBinary(std::istream& in) {
+    T value{};
+    in.read(reinterpret_cast<char*>(&value), sizeof(T));
+    if (!in.good()) {
+        throw std::runtime_error("Failed reading IFLOW binary payload");
+    }
+    return value;
+}
+
+std::int32_t blendModeToInt(BlendMode mode) {
+    return static_cast<std::int32_t>(mode);
+}
+
+BlendMode intToBlendMode(std::int32_t value) {
+    if (value < static_cast<std::int32_t>(BlendMode::Normal) ||
+        value > static_cast<std::int32_t>(BlendMode::Difference)) {
+        throw std::runtime_error("Invalid IFLOW blend mode value");
+    }
+    return static_cast<BlendMode>(value);
+}
+
+void writeString(std::ostream& out, const std::string& value) {
+    const std::uint32_t length = static_cast<std::uint32_t>(value.size());
+    writeBinary(out, length);
+    out.write(value.data(), static_cast<std::streamsize>(length));
+    if (!out.good()) {
+        throw std::runtime_error("Failed writing IFLOW string");
+    }
+}
+
+std::string readString(std::istream& in) {
+    const std::uint32_t length = readBinary<std::uint32_t>(in);
+    std::string value(length, '\0');
+    if (length > 0) {
+        in.read(value.data(), static_cast<std::streamsize>(length));
+        if (!in.good()) {
+            throw std::runtime_error("Failed reading IFLOW string");
+        }
+    }
+    return value;
+}
+
+void writeImageBuffer(std::ostream& out, const ImageBuffer& image) {
+    writeBinary(out, static_cast<std::int32_t>(image.width()));
+    writeBinary(out, static_cast<std::int32_t>(image.height()));
+
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const PixelRGBA8& p = image.getPixel(x, y);
+            out.put(static_cast<char>(p.r));
+            out.put(static_cast<char>(p.g));
+            out.put(static_cast<char>(p.b));
+            out.put(static_cast<char>(p.a));
+        }
+    }
+
+    if (!out.good()) {
+        throw std::runtime_error("Failed writing IFLOW image buffer");
+    }
+}
+
+ImageBuffer readImageBuffer(std::istream& in) {
+    const std::int32_t width = readBinary<std::int32_t>(in);
+    const std::int32_t height = readBinary<std::int32_t>(in);
+    if (width <= 0 || height <= 0) {
+        throw std::runtime_error("Invalid IFLOW image dimensions");
+    }
+
+    ImageBuffer image(width, height, PixelRGBA8(0, 0, 0, 0));
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const auto r = static_cast<std::uint8_t>(in.get());
+            const auto g = static_cast<std::uint8_t>(in.get());
+            const auto b = static_cast<std::uint8_t>(in.get());
+            const auto a = static_cast<std::uint8_t>(in.get());
+            if (!in.good()) {
+                throw std::runtime_error("Failed reading IFLOW image pixels");
+            }
+            image.setPixel(x, y, PixelRGBA8(r, g, b, a));
+        }
+    }
+    return image;
+}
+
+void writeLayer(std::ostream& out, const Layer& layer) {
+    writeString(out, layer.name());
+    writeBinary(out, static_cast<std::uint8_t>(layer.visible() ? 1 : 0));
+    writeBinary(out, layer.opacity());
+    writeBinary(out, blendModeToInt(layer.blendMode()));
+    writeBinary(out, static_cast<std::int32_t>(layer.offsetX()));
+    writeBinary(out, static_cast<std::int32_t>(layer.offsetY()));
+    writeImageBuffer(out, layer.image());
+    writeBinary(out, static_cast<std::uint8_t>(layer.hasMask() ? 1 : 0));
+    if (layer.hasMask()) {
+        writeImageBuffer(out, layer.mask());
+    }
+}
+
+Layer readLayer(std::istream& in) {
+    const std::string name = readString(in);
+    const bool visible = readBinary<std::uint8_t>(in) != 0;
+    const float opacity = readBinary<float>(in);
+    const BlendMode blendMode = intToBlendMode(readBinary<std::int32_t>(in));
+    const int offsetX = readBinary<std::int32_t>(in);
+    const int offsetY = readBinary<std::int32_t>(in);
+    ImageBuffer image = readImageBuffer(in);
+    const bool hasMask = readBinary<std::uint8_t>(in) != 0;
+
+    Layer layer(name, image.width(), image.height(), PixelRGBA8(0, 0, 0, 0));
+    layer.setVisible(visible);
+    layer.setOpacity(opacity);
+    layer.setBlendMode(blendMode);
+    layer.setOffset(offsetX, offsetY);
+    layer.image() = image;
+
+    if (hasMask) {
+        ImageBuffer mask = readImageBuffer(in);
+        if (mask.width() != image.width() || mask.height() != image.height()) {
+            throw std::runtime_error("IFLOW layer mask dimensions do not match layer image");
+        }
+        layer.enableMask();
+        layer.mask() = mask;
+    }
+
+    return layer;
+}
+
+void writeGroup(std::ostream& out, const LayerGroup& group) {
+    writeString(out, group.name());
+    writeBinary(out, static_cast<std::uint8_t>(group.visible() ? 1 : 0));
+    writeBinary(out, group.opacity());
+    writeBinary(out, blendModeToInt(group.blendMode()));
+    writeBinary(out, static_cast<std::int32_t>(group.offsetX()));
+    writeBinary(out, static_cast<std::int32_t>(group.offsetY()));
+    writeBinary(out, static_cast<std::uint32_t>(group.nodeCount()));
+
+    for (std::size_t i = 0; i < group.nodeCount(); ++i) {
+        const LayerNode& node = group.node(i);
+        if (node.isLayer()) {
+            writeBinary(out, static_cast<std::uint8_t>(0));
+            writeLayer(out, node.asLayer());
+        } else {
+            writeBinary(out, static_cast<std::uint8_t>(1));
+            writeGroup(out, node.asGroup());
+        }
+    }
+}
+
+LayerGroup readGroup(std::istream& in) {
+    LayerGroup group(readString(in));
+    group.setVisible(readBinary<std::uint8_t>(in) != 0);
+    group.setOpacity(readBinary<float>(in));
+    group.setBlendMode(intToBlendMode(readBinary<std::int32_t>(in)));
+    group.setOffset(readBinary<std::int32_t>(in), readBinary<std::int32_t>(in));
+
+    const std::uint32_t nodeCount = readBinary<std::uint32_t>(in);
+    for (std::uint32_t i = 0; i < nodeCount; ++i) {
+        const std::uint8_t nodeType = readBinary<std::uint8_t>(in);
+        if (nodeType == 0) {
+            group.addLayer(readLayer(in));
+        } else if (nodeType == 1) {
+            group.addGroup(readGroup(in));
+        } else {
+            throw std::runtime_error("Invalid IFLOW node type");
+        }
+    }
+
+    return group;
+}
+} // namespace
+
+bool saveDocumentIFLOW(const Document& document, const std::string& path) {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) {
+        return false;
+    }
+
+    try {
+        out.write(kIFLOWMagic, sizeof(kIFLOWMagic));
+        writeBinary(out, kIFLOWVersion);
+        writeBinary(out, static_cast<std::int32_t>(document.width()));
+        writeBinary(out, static_cast<std::int32_t>(document.height()));
+        writeGroup(out, document.rootGroup());
+    } catch (const std::exception&) {
+        return false;
+    }
+
+    return out.good();
+}
+
+Document loadDocumentIFLOW(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in.is_open()) {
+        throw std::runtime_error("Failed to open IFLOW file");
+    }
+
+    char magic[sizeof(kIFLOWMagic)] = {};
+    in.read(magic, sizeof(magic));
+    if (!in.good()) {
+        throw std::runtime_error("Failed to read IFLOW header");
+    }
+    for (std::size_t i = 0; i < sizeof(kIFLOWMagic); ++i) {
+        if (magic[i] != kIFLOWMagic[i]) {
+            throw std::runtime_error("Invalid IFLOW magic");
+        }
+    }
+
+    const std::uint32_t version = readBinary<std::uint32_t>(in);
+    if (version != kIFLOWVersion) {
+        throw std::runtime_error("Unsupported IFLOW version");
+    }
+
+    const std::int32_t width = readBinary<std::int32_t>(in);
+    const std::int32_t height = readBinary<std::int32_t>(in);
+    if (width <= 0 || height <= 0) {
+        throw std::runtime_error("Invalid IFLOW document dimensions");
+    }
+
+    Document document(width, height);
+    document.rootGroup() = readGroup(in);
+    return document;
 }

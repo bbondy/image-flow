@@ -193,6 +193,50 @@ void testGroupedLayerOpacityAffectsComposite() {
     const PixelRGBA8 p = doc.composite().getPixel(0, 0);
     require(p.r == 188 && p.g == 188 && p.b == 188, "Group opacity should apply to the flattened group result");
 }
+
+void testIFLOWSerializationRoundtripPreservesStack() {
+    const std::string testOutDir = "build/output/test-images";
+    std::filesystem::create_directories(testOutDir);
+    const std::string iflowPath = testOutDir + "/roundtrip.iflow";
+
+    Document original(4, 2);
+    original.addLayer(Layer("Background", 4, 2, PixelRGBA8(12, 24, 36, 255)));
+
+    LayerGroup faceGroup("Face Group");
+    faceGroup.setOffset(1, 0);
+    faceGroup.setOpacity(0.8f);
+
+    Layer fill("Fill", 2, 2, PixelRGBA8(220, 180, 80, 255));
+    fill.enableMask(PixelRGBA8(255, 255, 255, 255));
+    fill.mask().setPixel(1, 1, PixelRGBA8(0, 0, 0, 255));
+    faceGroup.addLayer(fill);
+
+    Layer shade("Shade", 2, 2, PixelRGBA8(20, 40, 100, 180));
+    shade.setBlendMode(BlendMode::Multiply);
+    faceGroup.addLayer(shade);
+
+    original.addGroup(faceGroup);
+
+    require(saveDocumentIFLOW(original, iflowPath), "Saving IFLOW document should succeed");
+    Document loaded = loadDocumentIFLOW(iflowPath);
+
+    require(loaded.width() == original.width() && loaded.height() == original.height(), "IFLOW should preserve dimensions");
+    require(loaded.nodeCount() == 2, "IFLOW should preserve root node count");
+    require(loaded.node(1).isGroup(), "IFLOW should preserve group nodes");
+    const LayerGroup& loadedGroup = loaded.node(1).asGroup();
+    require(loadedGroup.nodeCount() == 2, "IFLOW should preserve group children");
+    require(loadedGroup.node(0).asLayer().hasMask(), "IFLOW should preserve per-layer masks");
+
+    const ImageBuffer a = original.composite();
+    const ImageBuffer b = loaded.composite();
+    for (int y = 0; y < a.height(); ++y) {
+        for (int x = 0; x < a.width(); ++x) {
+            const PixelRGBA8 pa = a.getPixel(x, y);
+            const PixelRGBA8 pb = b.getPixel(x, y);
+            require(pa.r == pb.r && pa.g == pb.g && pa.b == pb.b && pa.a == pb.a, "IFLOW roundtrip should preserve composite output");
+        }
+    }
+}
 } // namespace
 
 int main() {
@@ -205,6 +249,7 @@ int main() {
         testLayerMaskCanBeCleared();
         testGroupedLayerOffsetAndVisibility();
         testGroupedLayerOpacityAffectsComposite();
+        testIFLOWSerializationRoundtripPreservesStack();
 
         std::cout << "All tests passed\n";
         return 0;
