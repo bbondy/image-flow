@@ -1,0 +1,15 @@
+# Build artifacts
+*.o
+smiley
+tests
+
+# Generated images
+*.bmp
+*.png
+*.jpg
+*.gif
+
+# Editor/OS noise
+*.swp
+*.swo
+.DS_Store
