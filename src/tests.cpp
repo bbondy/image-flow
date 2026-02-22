@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -119,6 +120,24 @@ void testCodecRoundtripAgainstReference() {
         const DiffStats s = compareImages(reference, svgDecoded);
         require(s.maxAbs == 0, "SVG roundtrip must be pixel identical to reference");
     }
+}
+
+void testSVGViewBoxFallback() {
+    const std::string testOutDir = "build/output/test-images";
+    std::filesystem::create_directories(testOutDir);
+    const std::string svgPath = testOutDir + "/test_viewbox.svg";
+
+    std::ofstream out(svgPath);
+    require(static_cast<bool>(out), "Failed to open viewBox SVG for writing");
+    out << "<svg viewBox=\"0 0 2 3\">"
+           "<rect width=\"2\" height=\"3\" fill=\"rgb(10,20,30)\"/>"
+           "</svg>";
+    out.close();
+
+    SVGImage image = SVGImage::load(svgPath);
+    require(image.width() == 2 && image.height() == 3, "viewBox should provide SVG dimensions");
+    const Color p = image.getPixel(0, 0);
+    require(p.r == 10 && p.g == 20 && p.b == 30, "viewBox SVG should apply fill rect");
 }
 
 void testLayerBlendOutput() {
@@ -252,6 +271,7 @@ int main() {
     try {
         testReferenceSmileyShape();
         testCodecRoundtripAgainstReference();
+        testSVGViewBoxFallback();
         testLayerBlendOutput();
         testLayeredSmileyMatchesDirect();
         testLayerMaskVisibilityControl();

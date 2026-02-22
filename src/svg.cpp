@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -207,6 +208,28 @@ bool parseIntAttr(const std::unordered_map<std::string, std::string>& attrs, con
     return true;
 }
 
+bool parseViewBox(const std::unordered_map<std::string, std::string>& attrs, int& outW, int& outH) {
+    auto it = attrs.find("viewBox");
+    if (it == attrs.end()) {
+        return false;
+    }
+    std::stringstream ss(it->second);
+    double values[4] = {0.0, 0.0, 0.0, 0.0};
+    int idx = 0;
+    while (idx < 4) {
+        if (!(ss >> values[idx])) {
+            return false;
+        }
+        ++idx;
+    }
+    if (values[2] <= 0.0 || values[3] <= 0.0) {
+        return false;
+    }
+    outW = static_cast<int>(std::lround(values[2]));
+    outH = static_cast<int>(std::lround(values[3]));
+    return outW > 0 && outH > 0;
+}
+
 bool parseColorAttr(const std::unordered_map<std::string, std::string>& attrs, Color& out) {
     auto it = attrs.find("fill");
     if (it == attrs.end()) {
@@ -332,11 +355,22 @@ SVGImage SVGImage::load(const std::string& filename) {
     }
     int width = 0;
     int height = 0;
-    if (!parseIntAttr(root.attrs, "width", width) || !parseIntAttr(root.attrs, "height", height)) {
-        throw std::runtime_error("SVG missing width/height");
+    const bool hasWidth = parseIntAttr(root.attrs, "width", width);
+    const bool hasHeight = parseIntAttr(root.attrs, "height", height);
+    if (!hasWidth || !hasHeight) {
+        int viewW = 0;
+        int viewH = 0;
+        if (parseViewBox(root.attrs, viewW, viewH)) {
+            if (!hasWidth) {
+                width = viewW;
+            }
+            if (!hasHeight) {
+                height = viewH;
+            }
+        }
     }
     if (width <= 0 || height <= 0) {
-        throw std::runtime_error("Invalid SVG dimensions");
+        throw std::runtime_error("Invalid SVG dimensions (missing width/height or viewBox)");
     }
 
     SVGImage image(width, height, Color(255, 255, 255));
