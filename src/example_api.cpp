@@ -86,6 +86,12 @@ GIFImage createSmiley256GIF() {
     return image;
 }
 
+WEBPImage createSmiley256WEBP() {
+    WEBPImage image(256, 256, Color(255, 255, 255));
+    drawSmiley(image);
+    return image;
+}
+
 SVGImage createSmiley256SVG() {
     SVGImage image(256, 256, Color(255, 255, 255));
     drawSmiley(image);

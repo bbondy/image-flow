@@ -5,6 +5,7 @@ The project builds without external image-processing libraries.
 
 ## Features
 - BMP/PNG/JPG/GIF encode and decode
+- WebP encode and decode via `cwebp`/`dwebp` command-line tools (optional)
 - Drawing primitives (`line`, `circle`, `arc`, `fill`, `fillCircle`)
 - RGBA layer compositing with blend modes
 - Per-layer masks

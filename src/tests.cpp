@@ -5,6 +5,7 @@
 #include "layer.h"
 #include "png.h"
 #include "svg.h"
+#include "webp.h"
 
 #include <cmath>
 #include <cstdint>
@@ -111,6 +112,16 @@ void testCodecRoundtripAgainstReference() {
         std::cout << "JPEG diff stats mean=" << s.meanAbs << " max=" << s.maxAbs << "\n";
         require(s.meanAbs <= 12.0, "JPG mean absolute error is too high vs reference");
         require(s.maxAbs <= 180, "JPG max absolute channel error is too high vs reference");
+    }
+
+    if (WEBPImage::isToolingAvailable()) {
+        WEBPImage webp = example_api::createSmiley256WEBP();
+        require(webp.save(testOutDir + "/test_ref.webp"), "Failed saving WEBP in test");
+        WEBPImage webpDecoded = WEBPImage::load(testOutDir + "/test_ref.webp");
+        const DiffStats s = compareImages(reference, webpDecoded);
+        require(s.maxAbs == 0, "WEBP lossless roundtrip must be pixel identical to reference");
+    } else {
+        std::cout << "Skipping WEBP roundtrip test (install cwebp and dwebp to enable)\n";
     }
 
     SVGImage svg = example_api::createSmiley256SVG();

@@ -4,6 +4,7 @@
 #include "jpg.h"
 #include "png.h"
 #include "svg.h"
+#include "webp.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -39,6 +40,17 @@ int main() {
         if (!smileyGif.save(outDir + "/smiley.gif")) {
             std::cerr << "Failed to write smiley.gif\n";
             return 1;
+        }
+
+        const bool hasWebP = WEBPImage::isToolingAvailable();
+        if (hasWebP) {
+            WEBPImage smileyWebp = example_api::createSmiley256WEBP();
+            if (!smileyWebp.save(outDir + "/smiley.webp")) {
+                std::cerr << "Failed to write smiley.webp\n";
+                return 1;
+            }
+        } else {
+            std::cout << "Skipping WebP output (install cwebp and dwebp to enable)\n";
         }
 
         SVGImage smileySvg = example_api::createSmiley256SVG();
@@ -109,6 +121,14 @@ int main() {
         if (!gifDecoded.save(outDir + "/smiley_copy.gif")) {
             std::cerr << "Failed to write smiley_copy.gif\n";
             return 1;
+        }
+
+        if (hasWebP) {
+            WEBPImage webpDecoded = WEBPImage::load(outDir + "/smiley.webp");
+            if (!webpDecoded.save(outDir + "/smiley_copy.webp")) {
+                std::cerr << "Failed to write smiley_copy.webp\n";
+                return 1;
+            }
         }
 
         SVGImage svgDecoded = SVGImage::load(outDir + "/smiley.svg");

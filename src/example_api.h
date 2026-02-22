@@ -6,12 +6,14 @@
 #include "jpg.h"
 #include "png.h"
 #include "svg.h"
+#include "webp.h"
 
 namespace example_api {
 BMPImage createSmiley256BMP();
 PNGImage createSmiley256PNG();
 JPGImage createSmiley256JPG();
 GIFImage createSmiley256GIF();
+WEBPImage createSmiley256WEBP();
 SVGImage createSmiley256SVG();
 PNGImage createSmiley256LayeredPNG();
 PNGImage createLayerBlendDemoPNG();
