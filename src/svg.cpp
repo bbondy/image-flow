@@ -230,6 +230,38 @@ bool parseViewBox(const std::unordered_map<std::string, std::string>& attrs, int
     return outW > 0 && outH > 0;
 }
 
+bool parseTranslate(const std::unordered_map<std::string, std::string>& attrs, int& outDx, int& outDy) {
+    auto it = attrs.find("transform");
+    if (it == attrs.end()) {
+        return false;
+    }
+    const std::string& value = it->second;
+    const std::string key = "translate(";
+    std::size_t pos = value.find(key);
+    if (pos == std::string::npos) {
+        return false;
+    }
+    pos += key.size();
+    std::size_t end = value.find(')', pos);
+    if (end == std::string::npos) {
+        return false;
+    }
+    std::string payload = value.substr(pos, end - pos);
+    std::replace(payload.begin(), payload.end(), ',', ' ');
+    std::stringstream ss(payload);
+    double dx = 0.0;
+    double dy = 0.0;
+    if (!(ss >> dx)) {
+        return false;
+    }
+    if (!(ss >> dy)) {
+        dy = 0.0;
+    }
+    outDx = static_cast<int>(std::lround(dx));
+    outDy = static_cast<int>(std::lround(dy));
+    return true;
+}
+
 bool parseColorAttr(const std::unordered_map<std::string, std::string>& attrs, Color& out) {
     auto it = attrs.find("fill");
     if (it == attrs.end()) {
@@ -375,7 +407,13 @@ SVGImage SVGImage::load(const std::string& filename) {
 
     SVGImage image(width, height, Color(255, 255, 255));
 
-    std::function<void(const XmlNode&)> visit = [&](const XmlNode& node) {
+    std::function<void(const XmlNode&, int, int)> visit = [&](const XmlNode& node, int offsetX, int offsetY) {
+        int localDx = 0;
+        int localDy = 0;
+        if (parseTranslate(node.attrs, localDx, localDy)) {
+            offsetX += localDx;
+            offsetY += localDy;
+        }
         if (node.name == "rect") {
             int rectW = 0;
             int rectH = 0;
@@ -388,19 +426,22 @@ SVGImage SVGImage::load(const std::string& filename) {
             Color fill;
             const bool hasFill = parseColorAttr(node.attrs, fill);
 
-            if (hasW && hasH && rectW == width && rectH == height && hasFill && (!hasX || rectX == 0) && (!hasY || rectY == 0)) {
+            const int finalX = (hasX ? rectX : 0) + offsetX;
+            const int finalY = (hasY ? rectY : 0) + offsetY;
+
+            if (hasW && hasH && rectW == width && rectH == height && hasFill && finalX == 0 && finalY == 0) {
                 std::fill(image.m_pixels.begin(), image.m_pixels.end(), fill);
-            } else if (hasW && hasH && hasX && hasY && hasFill && rectW == 1 && rectH == 1) {
-                image.setPixel(rectX, rectY, fill);
+            } else if (hasW && hasH && hasFill && rectW == 1 && rectH == 1) {
+                image.setPixel(finalX, finalY, fill);
             }
         }
 
         for (const XmlNode& child : node.children) {
-            visit(child);
+            visit(child, offsetX, offsetY);
         }
     };
 
-    visit(root);
+    visit(root, 0, 0);
 
     return image;
 }

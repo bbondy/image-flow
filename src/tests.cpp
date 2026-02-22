@@ -140,6 +140,26 @@ void testSVGViewBoxFallback() {
     require(p.r == 10 && p.g == 20 && p.b == 30, "viewBox SVG should apply fill rect");
 }
 
+void testSVGTranslateTransform() {
+    const std::string testOutDir = "build/output/test-images";
+    std::filesystem::create_directories(testOutDir);
+    const std::string svgPath = testOutDir + "/test_transform.svg";
+
+    std::ofstream out(svgPath);
+    require(static_cast<bool>(out), "Failed to open transform SVG for writing");
+    out << "<svg width=\"4\" height=\"4\">"
+           "<g transform=\"translate(1,2)\">"
+           "<rect x=\"0\" y=\"0\" width=\"1\" height=\"1\" fill=\"rgb(5,10,15)\"/>"
+           "</g>"
+           "</svg>";
+    out.close();
+
+    SVGImage image = SVGImage::load(svgPath);
+    require(image.width() == 4 && image.height() == 4, "Transform SVG dimensions should be 4x4");
+    const Color p = image.getPixel(1, 2);
+    require(p.r == 5 && p.g == 10 && p.b == 15, "translate() should offset rect position");
+}
+
 void testLayerBlendOutput() {
     PNGImage base = example_api::createSmiley256PNG();
     PNGImage blended = example_api::createLayerBlendDemoPNG();
@@ -272,6 +292,7 @@ int main() {
         testReferenceSmileyShape();
         testCodecRoundtripAgainstReference();
         testSVGViewBoxFallback();
+        testSVGTranslateTransform();
         testLayerBlendOutput();
         testLayeredSmileyMatchesDirect();
         testLayerMaskVisibilityControl();
