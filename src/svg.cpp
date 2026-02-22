@@ -1,5 +1,7 @@
 #include "svg.h"
 
+#include "transform.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -232,36 +234,78 @@ bool parseViewBox(const std::unordered_map<std::string, std::string>& attrs, dou
     return true;
 }
 
-bool parseTranslate(const std::unordered_map<std::string, std::string>& attrs, int& outDx, int& outDy) {
+std::vector<double> parseTransformArgs(const std::string& payload) {
+    std::string normalized = payload;
+    std::replace(normalized.begin(), normalized.end(), ',', ' ');
+    std::stringstream ss(normalized);
+    std::vector<double> values;
+    double v = 0.0;
+    while (ss >> v) {
+        values.push_back(v);
+    }
+    return values;
+}
+
+Transform2D parseTransform(const std::unordered_map<std::string, std::string>& attrs) {
     auto it = attrs.find("transform");
     if (it == attrs.end()) {
-        return false;
+        return Transform2D::identity();
     }
+
     const std::string& value = it->second;
-    const std::string key = "translate(";
-    std::size_t pos = value.find(key);
-    if (pos == std::string::npos) {
-        return false;
+    std::size_t pos = 0;
+    Transform2D total = Transform2D::identity();
+
+    while (pos < value.size()) {
+        while (pos < value.size() && std::isspace(static_cast<unsigned char>(value[pos]))) {
+            ++pos;
+        }
+        if (pos >= value.size()) {
+            break;
+        }
+        std::size_t nameStart = pos;
+        while (pos < value.size() && std::isalpha(static_cast<unsigned char>(value[pos]))) {
+            ++pos;
+        }
+        if (nameStart == pos) {
+            break;
+        }
+        const std::string name = value.substr(nameStart, pos - nameStart);
+        while (pos < value.size() && std::isspace(static_cast<unsigned char>(value[pos]))) {
+            ++pos;
+        }
+        if (pos >= value.size() || value[pos] != '(') {
+            break;
+        }
+        ++pos;
+        std::size_t end = value.find(')', pos);
+        if (end == std::string::npos) {
+            break;
+        }
+        const std::string payload = value.substr(pos, end - pos);
+        pos = end + 1;
+
+        const std::vector<double> args = parseTransformArgs(payload);
+        if (name == "translate" && !args.empty()) {
+            const double dx = args[0];
+            const double dy = args.size() > 1 ? args[1] : 0.0;
+            Transform2D op = Transform2D::translation(dx, dy);
+            total = op * total;
+        } else if (name == "rotate" && !args.empty()) {
+            const double angle = args[0];
+            if (args.size() >= 3) {
+                Transform2D op = Transform2D::rotationRadians(angle * 3.14159265358979323846 / 180.0, args[1], args[2]);
+                total = op * total;
+            } else {
+                Transform2D op = Transform2D::rotationRadians(angle * 3.14159265358979323846 / 180.0);
+                total = op * total;
+            }
+        } else {
+            // Skip unsupported transform types.
+        }
     }
-    pos += key.size();
-    std::size_t end = value.find(')', pos);
-    if (end == std::string::npos) {
-        return false;
-    }
-    std::string payload = value.substr(pos, end - pos);
-    std::replace(payload.begin(), payload.end(), ',', ' ');
-    std::stringstream ss(payload);
-    double dx = 0.0;
-    double dy = 0.0;
-    if (!(ss >> dx)) {
-        return false;
-    }
-    if (!(ss >> dy)) {
-        dy = 0.0;
-    }
-    outDx = static_cast<int>(std::lround(dx));
-    outDy = static_cast<int>(std::lround(dy));
-    return true;
+
+    return total;
 }
 
 struct PreserveAspectRatio {
@@ -510,13 +554,16 @@ SVGImage SVGImage::load(const std::string& filename) {
         }
     }
 
-    std::function<void(const XmlNode&, int, int)> visit = [&](const XmlNode& node, int offsetX, int offsetY) {
-        int localDx = 0;
-        int localDy = 0;
-        if (parseTranslate(node.attrs, localDx, localDy)) {
-            offsetX += localDx;
-            offsetY += localDy;
-        }
+    Transform2D viewTransform = Transform2D::identity();
+    if (hasViewBox) {
+        viewTransform = Transform2D::translation(-viewMinX, -viewMinY);
+        Transform2D scale = Transform2D::fromMatrix(scaleX, 0.0, 0.0, scaleY, alignOffsetX, alignOffsetY);
+        viewTransform = scale * viewTransform;
+    }
+
+    std::function<void(const XmlNode&, const Transform2D&)> visit = [&](const XmlNode& node, const Transform2D& parentTransform) {
+        const Transform2D localTransform = parseTransform(node.attrs);
+        const Transform2D combinedTransform = parentTransform * localTransform;
         if (node.name == "rect") {
             int rectW = 0;
             int rectH = 0;
@@ -529,46 +576,50 @@ SVGImage SVGImage::load(const std::string& filename) {
             Color fill;
             const bool hasFill = parseColorAttr(node.attrs, fill);
 
-            double x = static_cast<double>(hasX ? rectX : 0);
-            double y = static_cast<double>(hasY ? rectY : 0);
-            double w = static_cast<double>(hasW ? rectW : 0);
-            double h = static_cast<double>(hasH ? rectH : 0);
+            if (hasW && hasH && hasFill) {
+                const double x0 = static_cast<double>(hasX ? rectX : 0);
+                const double y0 = static_cast<double>(hasY ? rectY : 0);
+                const double x1 = x0 + static_cast<double>(rectW);
+                const double y1 = y0 + static_cast<double>(rectH);
 
-            if (hasViewBox) {
-                x = (x - viewMinX) * scaleX + alignOffsetX;
-                y = (y - viewMinY) * scaleY + alignOffsetY;
-                w *= scaleX;
-                h *= scaleY;
-            }
+                const Transform2D totalTransform = viewTransform * combinedTransform;
 
-            const double offsetScaledX = static_cast<double>(offsetX) * scaleX;
-            const double offsetScaledY = static_cast<double>(offsetY) * scaleY;
-            const int finalX = static_cast<int>(std::lround(x + offsetScaledX));
-            const int finalY = static_cast<int>(std::lround(y + offsetScaledY));
-            const int finalW = static_cast<int>(std::lround(w));
-            const int finalH = static_cast<int>(std::lround(h));
+                const auto c1 = totalTransform.apply(x0, y0);
+                const auto c2 = totalTransform.apply(x1, y0);
+                const auto c3 = totalTransform.apply(x0, y1);
+                const auto c4 = totalTransform.apply(x1, y1);
 
-            if (hasW && hasH && hasFill && finalX == 0 && finalY == 0 && finalW == width && finalH == height) {
-                std::fill(image.m_pixels.begin(), image.m_pixels.end(), fill);
-            } else if (hasW && hasH && hasFill && finalW > 0 && finalH > 0) {
-                const int startX = std::max(0, finalX);
-                const int startY = std::max(0, finalY);
-                const int endX = std::min(width, finalX + finalW);
-                const int endY = std::min(height, finalY + finalH);
-                for (int py = startY; py < endY; ++py) {
-                    for (int px = startX; px < endX; ++px) {
-                        image.setPixel(px, py, fill);
+                double minX = std::min(std::min(c1.first, c2.first), std::min(c3.first, c4.first));
+                double minY = std::min(std::min(c1.second, c2.second), std::min(c3.second, c4.second));
+                double maxX = std::max(std::max(c1.first, c2.first), std::max(c3.first, c4.first));
+                double maxY = std::max(std::max(c1.second, c2.second), std::max(c3.second, c4.second));
+
+                int startX = std::max(0, static_cast<int>(std::floor(minX)));
+                int startY = std::max(0, static_cast<int>(std::floor(minY)));
+                int endX = std::min(width, static_cast<int>(std::ceil(maxX)));
+                int endY = std::min(height, static_cast<int>(std::ceil(maxY)));
+
+                if (startX == 0 && startY == 0 && endX == width && endY == height && combinedTransform.isIdentity()) {
+                    std::fill(image.m_pixels.begin(), image.m_pixels.end(), fill);
+                } else {
+                    for (int py = startY; py < endY; ++py) {
+                        for (int px = startX; px < endX; ++px) {
+                            const auto local = totalTransform.applyInverse(static_cast<double>(px) + 0.5, static_cast<double>(py) + 0.5);
+                            if (local.first >= x0 && local.first < x1 && local.second >= y0 && local.second < y1) {
+                                image.setPixel(px, py, fill);
+                            }
+                        }
                     }
                 }
             }
         }
 
         for (const XmlNode& child : node.children) {
-            visit(child, offsetX, offsetY);
+            visit(child, combinedTransform);
         }
     };
 
-    visit(root, 0, 0);
+    visit(root, Transform2D::identity());
 
     return image;
 }
