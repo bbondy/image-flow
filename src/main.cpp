@@ -1,4 +1,4 @@
-#include "api.h"
+#include "example_api.h"
 #include "bmp.h"
 #include "gif.h"
 #include "jpg.h"
@@ -16,38 +16,38 @@ int main() {
         std::filesystem::create_directories(outDir);
         auto absDiff = [](int a, int b) { return a > b ? (a - b) : (b - a); };
 
-        BMPImage smileyBmp = api::createSmiley256BMP();
+        BMPImage smileyBmp = example_api::createSmiley256BMP();
         if (!smileyBmp.save(outDir + "/smiley.bmp")) {
             std::cerr << "Failed to write smiley.bmp\n";
             return 1;
         }
 
-        PNGImage smileyPng = api::createSmiley256PNG();
+        PNGImage smileyPng = example_api::createSmiley256PNG();
         if (!smileyPng.save(outDir + "/smiley.png")) {
             std::cerr << "Failed to write smiley.png\n";
             return 1;
         }
 
-        JPGImage smileyJpg = api::createSmiley256JPG();
+        JPGImage smileyJpg = example_api::createSmiley256JPG();
         if (!smileyJpg.save(outDir + "/smiley.jpg")) {
             std::cerr << "Failed to write smiley.jpg\n";
             return 1;
         }
 
-        GIFImage smileyGif = api::createSmiley256GIF();
+        GIFImage smileyGif = example_api::createSmiley256GIF();
         if (!smileyGif.save(outDir + "/smiley.gif")) {
             std::cerr << "Failed to write smiley.gif\n";
             return 1;
         }
 
-        PNGImage layeredBlend = api::createLayerBlendDemoPNG();
+        PNGImage layeredBlend = example_api::createLayerBlendDemoPNG();
         if (!layeredBlend.save(outDir + "/layered_blend.png")) {
             std::cerr << "Failed to write layered_blend.png\n";
             return 1;
         }
 
-        PNGImage directSmiley = api::createSmiley256PNG();
-        PNGImage layeredSmiley = api::createSmiley256LayeredPNG();
+        PNGImage directSmiley = example_api::createSmiley256PNG();
+        PNGImage layeredSmiley = example_api::createSmiley256LayeredPNG();
         if (!directSmiley.save(outDir + "/smiley_direct.png")) {
             std::cerr << "Failed to write smiley_direct.png\n";
             return 1;

@@ -1,4 +1,4 @@
-#include "api.h"
+#include "example_api.h"
 #include "bmp.h"
 #include "gif.h"
 #include "jpg.h"
@@ -55,7 +55,7 @@ DiffStats compareImages(const RasterImage& a, const RasterImage& b) {
 }
 
 void testReferenceSmileyShape() {
-    PNGImage ref = api::createSmiley256PNG();
+    PNGImage ref = example_api::createSmiley256PNG();
 
     require(ref.width() == 256 && ref.height() == 256, "Reference smiley dimensions must be 256x256");
 
@@ -75,9 +75,9 @@ void testReferenceSmileyShape() {
 void testCodecRoundtripAgainstReference() {
     const std::string testOutDir = "build/output/test-images";
     std::filesystem::create_directories(testOutDir);
-    PNGImage reference = api::createSmiley256PNG();
+    PNGImage reference = example_api::createSmiley256PNG();
 
-    BMPImage bmp = api::createSmiley256BMP();
+    BMPImage bmp = example_api::createSmiley256BMP();
     require(bmp.save(testOutDir + "/test_ref.bmp"), "Failed saving BMP in test");
     BMPImage bmpDecoded = BMPImage::load(testOutDir + "/test_ref.bmp");
     {
@@ -85,7 +85,7 @@ void testCodecRoundtripAgainstReference() {
         require(s.maxAbs == 0, "BMP roundtrip must be pixel identical to reference");
     }
 
-    PNGImage png = api::createSmiley256PNG();
+    PNGImage png = example_api::createSmiley256PNG();
     require(png.save(testOutDir + "/test_ref.png"), "Failed saving PNG in test");
     PNGImage pngDecoded = PNGImage::load(testOutDir + "/test_ref.png");
     {
@@ -93,7 +93,7 @@ void testCodecRoundtripAgainstReference() {
         require(s.maxAbs == 0, "PNG roundtrip must be pixel identical to reference");
     }
 
-    GIFImage gif = api::createSmiley256GIF();
+    GIFImage gif = example_api::createSmiley256GIF();
     require(gif.save(testOutDir + "/test_ref.gif"), "Failed saving GIF in test");
     GIFImage gifDecoded = GIFImage::load(testOutDir + "/test_ref.gif");
     {
@@ -101,7 +101,7 @@ void testCodecRoundtripAgainstReference() {
         require(s.maxAbs == 0, "GIF roundtrip must be pixel identical to reference");
     }
 
-    JPGImage jpg = api::createSmiley256JPG();
+    JPGImage jpg = example_api::createSmiley256JPG();
     require(jpg.save(testOutDir + "/test_ref.jpg"), "Failed saving JPG in test");
     JPGImage jpgDecoded = JPGImage::load(testOutDir + "/test_ref.jpg");
     {
@@ -113,8 +113,8 @@ void testCodecRoundtripAgainstReference() {
 }
 
 void testLayerBlendOutput() {
-    PNGImage base = api::createSmiley256PNG();
-    PNGImage blended = api::createLayerBlendDemoPNG();
+    PNGImage base = example_api::createSmiley256PNG();
+    PNGImage blended = example_api::createLayerBlendDemoPNG();
     require(blended.width() == 256 && blended.height() == 256, "Layered blend image should be 256x256");
 
     const DiffStats s = compareImages(base, blended);
@@ -122,8 +122,8 @@ void testLayerBlendOutput() {
 }
 
 void testLayeredSmileyMatchesDirect() {
-    PNGImage direct = api::createSmiley256PNG();
-    PNGImage layered = api::createSmiley256LayeredPNG();
+    PNGImage direct = example_api::createSmiley256PNG();
+    PNGImage layered = example_api::createSmiley256LayeredPNG();
     const DiffStats s = compareImages(direct, layered);
     require(s.maxAbs == 0, "Layered smiley should match direct smiley pixel-for-pixel");
 }

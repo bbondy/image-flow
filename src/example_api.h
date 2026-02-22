@@ -1,12 +1,12 @@
-#ifndef API_H
-#define API_H
+#ifndef EXAMPLE_API_H
+#define EXAMPLE_API_H
 
 #include "bmp.h"
 #include "gif.h"
 #include "jpg.h"
 #include "png.h"
 
-namespace api {
+namespace example_api {
 BMPImage createSmiley256BMP();
 PNGImage createSmiley256PNG();
 JPGImage createSmiley256JPG();

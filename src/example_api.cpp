@@ -1,4 +1,4 @@
-#include "api.h"
+#include "example_api.h"
 
 #include "drawable.h"
 #include "layer.h"
@@ -61,7 +61,7 @@ private:
 };
 } // namespace
 
-namespace api {
+namespace example_api {
 BMPImage createSmiley256BMP() {
     BMPImage image(256, 256, Color(255, 255, 255));
     drawSmiley(image);
@@ -185,4 +185,4 @@ PNGImage createLayerBlendDemoPNG() {
     copyToRasterImage(composited, out);
     return out;
 }
-} // namespace api
+} // namespace example_api
