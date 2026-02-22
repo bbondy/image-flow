@@ -10,7 +10,7 @@
 namespace {
 constexpr float kPi = 3.14159265358979323846f;
 
-void drawSmiley(RasterImage& image) {
+void drawSmiley(Image& image) {
     Drawable d(image);
 
     const Color yellow(255, 220, 40);
@@ -82,6 +82,12 @@ JPGImage createSmiley256JPG() {
 
 GIFImage createSmiley256GIF() {
     GIFImage image(256, 256, Color(255, 255, 255));
+    drawSmiley(image);
+    return image;
+}
+
+SVGImage createSmiley256SVG() {
+    SVGImage image(256, 256, Color(255, 255, 255));
     drawSmiley(image);
     return image;
 }

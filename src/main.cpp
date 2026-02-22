@@ -3,6 +3,7 @@
 #include "gif.h"
 #include "jpg.h"
 #include "png.h"
+#include "svg.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -37,6 +38,12 @@ int main() {
         GIFImage smileyGif = example_api::createSmiley256GIF();
         if (!smileyGif.save(outDir + "/smiley.gif")) {
             std::cerr << "Failed to write smiley.gif\n";
+            return 1;
+        }
+
+        SVGImage smileySvg = example_api::createSmiley256SVG();
+        if (!smileySvg.save(outDir + "/smiley.svg")) {
+            std::cerr << "Failed to write smiley.svg\n";
             return 1;
         }
 
@@ -104,9 +111,15 @@ int main() {
             return 1;
         }
 
+        SVGImage svgDecoded = SVGImage::load(outDir + "/smiley.svg");
+        if (!svgDecoded.save(outDir + "/smiley_copy.svg")) {
+            std::cerr << "Failed to write smiley_copy.svg\n";
+            return 1;
+        }
+
         std::cout << "Wrote smiley.bmp, smiley.png, smiley.jpg, smiley.gif, "
-                     "smiley_copy.bmp, smiley_copy.png, smiley_copy.jpg, smiley_copy.gif, layered_blend.png, "
-                     "smiley_direct.png, smiley_layered.png, and smiley_layer_diff.png ("
+                     "smiley.svg, smiley_copy.bmp, smiley_copy.png, smiley_copy.jpg, smiley_copy.gif, "
+                     "smiley_copy.svg, layered_blend.png, smiley_direct.png, smiley_layered.png, and smiley_layer_diff.png ("
                   << bmpDecoded.width() << "x" << bmpDecoded.height() << ")\n";
         std::cout << "Layered vs direct smiley diff: mean=" << meanDiff << " max=" << maxDiff << "\n";
     } catch (const std::exception& ex) {

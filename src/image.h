@@ -13,15 +13,25 @@ struct Color {
         : r(red), g(green), b(blue) {}
 };
 
-class RasterImage {
+class Image {
 public:
-    virtual ~RasterImage() = default;
+    virtual ~Image() = default;
 
     virtual int width() const = 0;
     virtual int height() const = 0;
     virtual bool inBounds(int x, int y) const = 0;
     virtual const Color& getPixel(int x, int y) const = 0;
     virtual void setPixel(int x, int y, const Color& color) = 0;
+};
+
+class RasterImage : public Image {
+public:
+    ~RasterImage() override = default;
+};
+
+class VectorImage : public Image {
+public:
+    ~VectorImage() override = default;
 };
 
 #endif

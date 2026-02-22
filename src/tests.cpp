@@ -4,6 +4,7 @@
 #include "jpg.h"
 #include "layer.h"
 #include "png.h"
+#include "svg.h"
 
 #include <cmath>
 #include <cstdint>
@@ -26,7 +27,7 @@ void require(bool condition, const std::string& message) {
     }
 }
 
-DiffStats compareImages(const RasterImage& a, const RasterImage& b) {
+DiffStats compareImages(const Image& a, const Image& b) {
     require(a.width() == b.width(), "Image width mismatch");
     require(a.height() == b.height(), "Image height mismatch");
 
@@ -109,6 +110,14 @@ void testCodecRoundtripAgainstReference() {
         std::cout << "JPEG diff stats mean=" << s.meanAbs << " max=" << s.maxAbs << "\n";
         require(s.meanAbs <= 12.0, "JPG mean absolute error is too high vs reference");
         require(s.maxAbs <= 180, "JPG max absolute channel error is too high vs reference");
+    }
+
+    SVGImage svg = example_api::createSmiley256SVG();
+    require(svg.save(testOutDir + "/test_ref.svg"), "Failed saving SVG in test");
+    SVGImage svgDecoded = SVGImage::load(testOutDir + "/test_ref.svg");
+    {
+        const DiffStats s = compareImages(reference, svgDecoded);
+        require(s.maxAbs == 0, "SVG roundtrip must be pixel identical to reference");
     }
 }
 

@@ -5,12 +5,14 @@
 #include "gif.h"
 #include "jpg.h"
 #include "png.h"
+#include "svg.h"
 
 namespace example_api {
 BMPImage createSmiley256BMP();
 PNGImage createSmiley256PNG();
 JPGImage createSmiley256JPG();
 GIFImage createSmiley256GIF();
+SVGImage createSmiley256SVG();
 PNGImage createSmiley256LayeredPNG();
 PNGImage createLayerBlendDemoPNG();
 }

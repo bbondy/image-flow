@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-Drawable::Drawable(RasterImage& image) : m_image(image) {}
+Drawable::Drawable(Image& image) : m_image(image) {}
 
 void Drawable::setPixel(int x, int y, const Color& color) {
     m_image.setPixel(x, y, color);

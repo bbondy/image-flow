@@ -5,7 +5,7 @@
 
 class Drawable {
 public:
-    explicit Drawable(RasterImage& image);
+    explicit Drawable(Image& image);
 
     void setPixel(int x, int y, const Color& color);
     const Color& getPixel(int x, int y) const;
@@ -17,7 +17,7 @@ public:
     void arc(int cx, int cy, int radius, float startRadians, float endRadians, const Color& color);
 
 private:
-    RasterImage& m_image;
+    Image& m_image;
 
     void plotCircleOctants(int cx, int cy, int x, int y, const Color& color);
 };
