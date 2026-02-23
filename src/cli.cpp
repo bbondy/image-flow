@@ -1514,96 +1514,9 @@ Transform2D buildTransformFromKV(const std::unordered_map<std::string, std::stri
     return transform;
 }
 
-void applyOperation(Document& document, const std::string& opSpec, const std::function<void(const std::string&)>& emitOutput) {
-    const std::vector<std::string> tokens = splitWhitespace(opSpec);
-    if (tokens.empty()) {
-        throw std::runtime_error("Empty --op value");
-    }
-
-    const std::string action = tokens[0];
-    const std::unordered_map<std::string, std::string> kv = parseKeyValues(tokens, 1);
-
-    enum class ActionType {
-        Unknown,
-        AddLayer,
-        AddGridLayers,
-        AddGroup,
-        SetLayer,
-        SetGroup,
-        SetTransform,
-        ConcatTransform,
-        ClearTransform,
-        DrawFill,
-        DrawLine,
-        DrawRect,
-        DrawFillRect,
-        DrawRoundRect,
-        DrawFillRoundRect,
-        DrawEllipse,
-        DrawFillEllipse,
-        DrawPolyline,
-        DrawPolygon,
-        DrawFillPolygon,
-        DrawFloodFill,
-        DrawCircle,
-        DrawFillCircle,
-        DrawArc,
-        DrawQuadraticBezier,
-        DrawBezier,
-        GradientLayer,
-        CheckerLayer,
-        NoiseLayer,
-        FillLayer,
-        SetPixel,
-        MaskEnable,
-        MaskClear,
-        MaskSetPixel,
-        ImportImage,
-        ResizeLayer,
-        Emit,
-    };
-
-    static const std::unordered_map<std::string, ActionType> actionTypes = {
-        {"add-layer", ActionType::AddLayer},
-        {"add-grid-layers", ActionType::AddGridLayers},
-        {"add-group", ActionType::AddGroup},
-        {"set-layer", ActionType::SetLayer},
-        {"set-group", ActionType::SetGroup},
-        {"set-transform", ActionType::SetTransform},
-        {"concat-transform", ActionType::ConcatTransform},
-        {"clear-transform", ActionType::ClearTransform},
-        {"draw-fill", ActionType::DrawFill},
-        {"draw-line", ActionType::DrawLine},
-        {"draw-rect", ActionType::DrawRect},
-        {"draw-fill-rect", ActionType::DrawFillRect},
-        {"draw-round-rect", ActionType::DrawRoundRect},
-        {"draw-fill-round-rect", ActionType::DrawFillRoundRect},
-        {"draw-ellipse", ActionType::DrawEllipse},
-        {"draw-fill-ellipse", ActionType::DrawFillEllipse},
-        {"draw-polyline", ActionType::DrawPolyline},
-        {"draw-polygon", ActionType::DrawPolygon},
-        {"draw-fill-polygon", ActionType::DrawFillPolygon},
-        {"draw-flood-fill", ActionType::DrawFloodFill},
-        {"draw-circle", ActionType::DrawCircle},
-        {"draw-fill-circle", ActionType::DrawFillCircle},
-        {"draw-arc", ActionType::DrawArc},
-        {"draw-quadratic-bezier", ActionType::DrawQuadraticBezier},
-        {"draw-bezier", ActionType::DrawBezier},
-        {"gradient-layer", ActionType::GradientLayer},
-        {"checker-layer", ActionType::CheckerLayer},
-        {"noise-layer", ActionType::NoiseLayer},
-        {"fill-layer", ActionType::FillLayer},
-        {"set-pixel", ActionType::SetPixel},
-        {"mask-enable", ActionType::MaskEnable},
-        {"mask-clear", ActionType::MaskClear},
-        {"mask-set-pixel", ActionType::MaskSetPixel},
-        {"import-image", ActionType::ImportImage},
-        {"resize-layer", ActionType::ResizeLayer},
-        {"emit", ActionType::Emit},
-    };
-    const auto actionTypeIt = actionTypes.find(action);
-    const ActionType actionType = actionTypeIt == actionTypes.end() ? ActionType::Unknown : actionTypeIt->second;
-
+bool tryApplyLambdaDispatchedOperation(const std::string& action,
+                                       Document& document,
+                                       const std::unordered_map<std::string, std::string>& kv) {
     using OpHandler = std::function<void()>;
     const std::unordered_map<std::string, OpHandler> dispatch = {
         {"apply-effect", [&]() {
@@ -1803,9 +1716,106 @@ void applyOperation(Document& document, const std::string& opSpec, const std::fu
              applyChannelMixToLayer(layer, matrix, clampMin, clampMax);
          }},
     };
+
     const auto dispatchIt = dispatch.find(action);
-    if (dispatchIt != dispatch.end()) {
-        dispatchIt->second();
+    if (dispatchIt == dispatch.end()) {
+        return false;
+    }
+    dispatchIt->second();
+    return true;
+}
+
+void applyOperation(Document& document, const std::string& opSpec, const std::function<void(const std::string&)>& emitOutput) {
+    const std::vector<std::string> tokens = splitWhitespace(opSpec);
+    if (tokens.empty()) {
+        throw std::runtime_error("Empty --op value");
+    }
+
+    const std::string action = tokens[0];
+    const std::unordered_map<std::string, std::string> kv = parseKeyValues(tokens, 1);
+
+    enum class ActionType {
+        Unknown,
+        AddLayer,
+        AddGridLayers,
+        AddGroup,
+        SetLayer,
+        SetGroup,
+        SetTransform,
+        ConcatTransform,
+        ClearTransform,
+        DrawFill,
+        DrawLine,
+        DrawRect,
+        DrawFillRect,
+        DrawRoundRect,
+        DrawFillRoundRect,
+        DrawEllipse,
+        DrawFillEllipse,
+        DrawPolyline,
+        DrawPolygon,
+        DrawFillPolygon,
+        DrawFloodFill,
+        DrawCircle,
+        DrawFillCircle,
+        DrawArc,
+        DrawQuadraticBezier,
+        DrawBezier,
+        GradientLayer,
+        CheckerLayer,
+        NoiseLayer,
+        FillLayer,
+        SetPixel,
+        MaskEnable,
+        MaskClear,
+        MaskSetPixel,
+        ImportImage,
+        ResizeLayer,
+        Emit,
+    };
+
+    static const std::unordered_map<std::string, ActionType> actionTypes = {
+        {"add-layer", ActionType::AddLayer},
+        {"add-grid-layers", ActionType::AddGridLayers},
+        {"add-group", ActionType::AddGroup},
+        {"set-layer", ActionType::SetLayer},
+        {"set-group", ActionType::SetGroup},
+        {"set-transform", ActionType::SetTransform},
+        {"concat-transform", ActionType::ConcatTransform},
+        {"clear-transform", ActionType::ClearTransform},
+        {"draw-fill", ActionType::DrawFill},
+        {"draw-line", ActionType::DrawLine},
+        {"draw-rect", ActionType::DrawRect},
+        {"draw-fill-rect", ActionType::DrawFillRect},
+        {"draw-round-rect", ActionType::DrawRoundRect},
+        {"draw-fill-round-rect", ActionType::DrawFillRoundRect},
+        {"draw-ellipse", ActionType::DrawEllipse},
+        {"draw-fill-ellipse", ActionType::DrawFillEllipse},
+        {"draw-polyline", ActionType::DrawPolyline},
+        {"draw-polygon", ActionType::DrawPolygon},
+        {"draw-fill-polygon", ActionType::DrawFillPolygon},
+        {"draw-flood-fill", ActionType::DrawFloodFill},
+        {"draw-circle", ActionType::DrawCircle},
+        {"draw-fill-circle", ActionType::DrawFillCircle},
+        {"draw-arc", ActionType::DrawArc},
+        {"draw-quadratic-bezier", ActionType::DrawQuadraticBezier},
+        {"draw-bezier", ActionType::DrawBezier},
+        {"gradient-layer", ActionType::GradientLayer},
+        {"checker-layer", ActionType::CheckerLayer},
+        {"noise-layer", ActionType::NoiseLayer},
+        {"fill-layer", ActionType::FillLayer},
+        {"set-pixel", ActionType::SetPixel},
+        {"mask-enable", ActionType::MaskEnable},
+        {"mask-clear", ActionType::MaskClear},
+        {"mask-set-pixel", ActionType::MaskSetPixel},
+        {"import-image", ActionType::ImportImage},
+        {"resize-layer", ActionType::ResizeLayer},
+        {"emit", ActionType::Emit},
+    };
+    const auto actionTypeIt = actionTypes.find(action);
+    const ActionType actionType = actionTypeIt == actionTypes.end() ? ActionType::Unknown : actionTypeIt->second;
+
+    if (tryApplyLambdaDispatchedOperation(action, document, kv)) {
         return;
     }
 
