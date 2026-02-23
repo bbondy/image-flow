@@ -1,30 +1,87 @@
 #include "webp.h"
 
-#include <chrono>
 #include <cctype>
 #include <cstdlib>
+#include <cerrno>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <sys/wait.h>
 #include <unistd.h>
+#include <vector>
 
 namespace {
 std::size_t pixelIndex(int x, int y, int width) {
     return static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x);
 }
 
-std::string shellQuote(const std::string& value) {
-    std::string out = "'";
-    for (char ch : value) {
-        if (ch == '\'') {
-            out += "'\\''";
-        } else {
-            out += ch;
+class TempPathGuard {
+public:
+    explicit TempPathGuard(std::string path) : m_path(std::move(path)) {}
+
+    const std::string& path() const { return m_path; }
+
+    void release() { m_path.clear(); }
+
+    ~TempPathGuard() {
+        if (!m_path.empty()) {
+            std::error_code ec;
+            std::filesystem::remove(m_path, ec);
         }
     }
-    out += "'";
-    return out;
+
+private:
+    std::string m_path;
+};
+
+std::string createSecureTempFilename(const std::string& suffix) {
+    if (suffix.empty()) {
+        throw std::runtime_error("Temporary file suffix must be non-empty");
+    }
+    const std::filesystem::path pattern = std::filesystem::temp_directory_path() /
+                                          ("imageflow_webp_XXXXXX" + suffix);
+    std::string mutablePattern = pattern.string();
+    std::vector<char> buffer(mutablePattern.begin(), mutablePattern.end());
+    buffer.push_back('\0');
+
+    const int fd = ::mkstemps(buffer.data(), static_cast<int>(suffix.size()));
+    if (fd < 0) {
+        throw std::runtime_error("Failed to create temporary file");
+    }
+    ::close(fd);
+    return std::string(buffer.data());
+}
+
+int runProcess(const std::string& executable, const std::vector<std::string>& args) {
+    std::vector<char*> argv;
+    argv.reserve(args.size() + 2);
+    argv.push_back(const_cast<char*>(executable.c_str()));
+    for (const std::string& arg : args) {
+        argv.push_back(const_cast<char*>(arg.c_str()));
+    }
+    argv.push_back(nullptr);
+
+    const pid_t pid = ::fork();
+    if (pid < 0) {
+        throw std::runtime_error("Failed to fork child process");
+    }
+    if (pid == 0) {
+        ::execv(executable.c_str(), argv.data());
+        _exit(127);
+    }
+
+    int status = 0;
+    while (::waitpid(pid, &status, 0) < 0) {
+        if (errno == EINTR) {
+            continue;
+        }
+        throw std::runtime_error("Failed waiting on child process");
+    }
+    if (!WIFEXITED(status)) {
+        return -1;
+    }
+    return WEXITSTATUS(status);
 }
 
 bool isExecutable(const std::filesystem::path& candidate) {
@@ -142,12 +199,6 @@ WEBPImage readPPM(const std::string& filename) {
     return image;
 }
 
-std::string uniqueTempFilename(const std::string& suffix) {
-    const auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    const std::filesystem::path temp = std::filesystem::temp_directory_path() /
-                                       ("imageflow_webp_" + std::to_string(now) + suffix);
-    return temp.string();
-}
 } // namespace
 
 WEBPImage::WEBPImage() : m_width(0), m_height(0) {}
@@ -199,15 +250,12 @@ bool WEBPImage::save(const std::string& filename) const {
         return false;
     }
 
-    const std::string tempPPM = uniqueTempFilename(".ppm");
-    if (!writePPM(tempPPM, m_width, m_height, m_pixels)) {
-        std::filesystem::remove(tempPPM);
+    TempPathGuard tempPPM(createSecureTempFilename(".ppm"));
+    if (!writePPM(tempPPM.path(), m_width, m_height, m_pixels)) {
         return false;
     }
 
-    const std::string command = shellQuote(cwebpPath) + " -quiet -lossless " + shellQuote(tempPPM) + " -o " + shellQuote(filename);
-    const int rc = std::system(command.c_str());
-    std::filesystem::remove(tempPPM);
+    const int rc = runProcess(cwebpPath, {"-quiet", "-lossless", tempPPM.path(), "-o", filename});
     return rc == 0;
 }
 
@@ -221,15 +269,12 @@ WEBPImage WEBPImage::load(const std::string& filename) {
         throw std::runtime_error("Cannot find dwebp in PATH");
     }
 
-    const std::string tempPPM = uniqueTempFilename(".ppm");
-    const std::string command = shellQuote(dwebpPath) + " -quiet -ppm " + shellQuote(filename) + " -o " + shellQuote(tempPPM);
-    const int rc = std::system(command.c_str());
+    TempPathGuard tempPPM(createSecureTempFilename(".ppm"));
+    const int rc = runProcess(dwebpPath, {"-quiet", "-ppm", filename, "-o", tempPPM.path()});
     if (rc != 0) {
-        std::filesystem::remove(tempPPM);
         throw std::runtime_error("Failed to decode WebP file: " + filename);
     }
 
-    WEBPImage decoded = readPPM(tempPPM);
-    std::filesystem::remove(tempPPM);
+    WEBPImage decoded = readPPM(tempPPM.path());
     return decoded;
 }
