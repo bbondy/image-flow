@@ -133,6 +133,48 @@ void Drawable::lineTo(float x, float y) {
     m_path.back().points.push_back({x, y});
 }
 
+void Drawable::quadraticCurveTo(float cx, float cy, float x, float y) {
+    if (m_path.empty() || m_path.back().points.empty() || m_path.back().closed) {
+        moveTo(x, y);
+        return;
+    }
+
+    const auto p0 = m_path.back().points.back();
+    const float span = std::sqrt((x - p0.first) * (x - p0.first) + (y - p0.second) * (y - p0.second));
+    const int steps = std::max(16, static_cast<int>(std::ceil(span)));
+    for (int i = 1; i <= steps; ++i) {
+        const float t = static_cast<float>(i) / static_cast<float>(steps);
+        const float omt = 1.0f - t;
+        const float px = omt * omt * p0.first + 2.0f * omt * t * cx + t * t * x;
+        const float py = omt * omt * p0.second + 2.0f * omt * t * cy + t * t * y;
+        lineTo(px, py);
+    }
+}
+
+void Drawable::bezierCurveTo(float cx1, float cy1, float cx2, float cy2, float x, float y) {
+    if (m_path.empty() || m_path.back().points.empty() || m_path.back().closed) {
+        moveTo(x, y);
+        return;
+    }
+
+    const auto p0 = m_path.back().points.back();
+    const float span = std::sqrt((x - p0.first) * (x - p0.first) + (y - p0.second) * (y - p0.second));
+    const int steps = std::max(16, static_cast<int>(std::ceil(span)));
+    for (int i = 1; i <= steps; ++i) {
+        const float t = static_cast<float>(i) / static_cast<float>(steps);
+        const float omt = 1.0f - t;
+        const float px = omt * omt * omt * p0.first +
+                         3.0f * omt * omt * t * cx1 +
+                         3.0f * omt * t * t * cx2 +
+                         t * t * t * x;
+        const float py = omt * omt * omt * p0.second +
+                         3.0f * omt * omt * t * cy1 +
+                         3.0f * omt * t * t * cy2 +
+                         t * t * t * y;
+        lineTo(px, py);
+    }
+}
+
 void Drawable::closePath() {
     if (m_path.empty()) {
         return;

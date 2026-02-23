@@ -472,6 +472,26 @@ void testDrawableRoundRectAndFillRoundRect() {
     require(outside.r == 0 && outside.g == 0 && outside.b == 0, "fillRoundRect should not affect outside pixels");
 }
 
+void testDrawableBezierCurves() {
+    PNGImage quadraticImg(22, 22, Color(0, 0, 0));
+    Drawable q(quadraticImg);
+    q.beginPath();
+    q.moveTo(2.0f, 16.0f);
+    q.quadraticCurveTo(11.0f, 2.0f, 19.0f, 16.0f);
+    q.stroke(Color(255, 255, 0));
+    const Color qMid = quadraticImg.getPixel(10, 9);
+    require(qMid.r == 255 && qMid.g == 255 && qMid.b == 0, "quadraticCurveTo should trace curved midpoint");
+
+    PNGImage cubicImg(24, 24, Color(0, 0, 0));
+    Drawable c(cubicImg);
+    c.beginPath();
+    c.moveTo(2.0f, 20.0f);
+    c.bezierCurveTo(8.0f, 2.0f, 16.0f, 2.0f, 22.0f, 20.0f);
+    c.stroke(Color(0, 255, 255));
+    const Color cMid = cubicImg.getPixel(12, 7);
+    require(cMid.r == 0 && cMid.g == 255 && cMid.b == 255, "bezierCurveTo should trace cubic curved midpoint");
+}
+
 void testRasterResizeFilters() {
     PNGImage src(2, 2, Color(0, 0, 0));
     src.setPixel(0, 0, Color(0, 0, 0));
@@ -663,6 +683,7 @@ int main() {
         testDrawableArcDirectionAndWrap();
         testDrawableFloodFill();
         testDrawableRoundRectAndFillRoundRect();
+        testDrawableBezierCurves();
         testRasterResizeFilters();
         testEffectsOnRasterImage();
         testEffectsOnLayerImageBuffer();

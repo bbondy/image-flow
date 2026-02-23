@@ -1485,6 +1485,8 @@ void applyOperation(Document& document, const std::string& opSpec) {
         DrawCircle,
         DrawFillCircle,
         DrawArc,
+        DrawQuadraticBezier,
+        DrawBezier,
         GradientLayer,
         CheckerLayer,
         NoiseLayer,
@@ -1521,6 +1523,8 @@ void applyOperation(Document& document, const std::string& opSpec) {
         {"draw-circle", ActionType::DrawCircle},
         {"draw-fill-circle", ActionType::DrawFillCircle},
         {"draw-arc", ActionType::DrawArc},
+        {"draw-quadratic-bezier", ActionType::DrawQuadraticBezier},
+        {"draw-bezier", ActionType::DrawBezier},
         {"gradient-layer", ActionType::GradientLayer},
         {"checker-layer", ActionType::CheckerLayer},
         {"noise-layer", ActionType::NoiseLayer},
@@ -2145,6 +2149,46 @@ void applyOperation(Document& document, const std::string& opSpec) {
 
         drawable.arc(std::stoi(kv.at("cx")), std::stoi(kv.at("cy")), std::stoi(kv.at("radius")),
                      startRadians, endRadians, Color(rgba.r, rgba.g, rgba.b), counterclockwise);
+        return;
+    }
+
+    case ActionType::DrawQuadraticBezier: {
+        if (kv.find("path") == kv.end() || kv.find("x0") == kv.end() || kv.find("y0") == kv.end() ||
+            kv.find("cx") == kv.end() || kv.find("cy") == kv.end() ||
+            kv.find("x1") == kv.end() || kv.find("y1") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-quadratic-bezier requires path= x0= y0= cx= cy= x1= y1= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.beginPath();
+        drawable.moveTo(std::stof(kv.at("x0")), std::stof(kv.at("y0")));
+        drawable.quadraticCurveTo(std::stof(kv.at("cx")), std::stof(kv.at("cy")),
+                                  std::stof(kv.at("x1")), std::stof(kv.at("y1")));
+        drawable.stroke(Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    case ActionType::DrawBezier: {
+        if (kv.find("path") == kv.end() || kv.find("x0") == kv.end() || kv.find("y0") == kv.end() ||
+            kv.find("cx1") == kv.end() || kv.find("cy1") == kv.end() ||
+            kv.find("cx2") == kv.end() || kv.find("cy2") == kv.end() ||
+            kv.find("x1") == kv.end() || kv.find("y1") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-bezier requires path= x0= y0= cx1= cy1= cx2= cy2= x1= y1= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.beginPath();
+        drawable.moveTo(std::stof(kv.at("x0")), std::stof(kv.at("y0")));
+        drawable.bezierCurveTo(std::stof(kv.at("cx1")), std::stof(kv.at("cy1")),
+                               std::stof(kv.at("cx2")), std::stof(kv.at("cy2")),
+                               std::stof(kv.at("x1")), std::stof(kv.at("y1")));
+        drawable.stroke(Color(rgba.r, rgba.g, rgba.b));
         return;
     }
 

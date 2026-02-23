@@ -30,6 +30,8 @@ public:
     void beginPath();
     void moveTo(float x, float y);
     void lineTo(float x, float y);
+    void quadraticCurveTo(float cx, float cy, float x, float y);
+    void bezierCurveTo(float cx1, float cy1, float cx2, float cy2, float x, float y);
     void closePath();
     void setLineWidth(int width);
     void setLineCap(LineCap cap);

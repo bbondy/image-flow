@@ -80,6 +80,8 @@ Binaries:
 - `draw-circle`
 - `draw-fill-circle`
 - `draw-arc`
+- `draw-quadratic-bezier`
+- `draw-bezier`
 
 All draw ops support `target=image|mask`.
 `draw-polyline`, `draw-polygon`, and `draw-fill-polygon` use `points=x0,y0;x1,y1;...`.
