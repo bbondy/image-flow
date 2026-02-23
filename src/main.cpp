@@ -1,7 +1,9 @@
 #include "example_api.h"
 #include "bmp.h"
+#include "effects.h"
 #include "gif.h"
 #include "jpg.h"
+#include "layer.h"
 #include "png.h"
 #include "resize.h"
 #include "svg.h"
@@ -13,10 +15,24 @@
 #include <filesystem>
 #include <iostream>
 
+namespace {
+PNGImage rasterToPNG(const RasterImage& src) {
+    PNGImage out(src.width(), src.height(), Color(0, 0, 0));
+    for (int y = 0; y < src.height(); ++y) {
+        for (int x = 0; x < src.width(); ++x) {
+            out.setPixel(x, y, src.getPixel(x, y));
+        }
+    }
+    return out;
+}
+} // namespace
+
 int main() {
     try {
         const std::string outDir = "build/output/images";
+        const std::string samplesDir = "samples";
         std::filesystem::create_directories(outDir);
+        std::filesystem::create_directories(samplesDir);
         auto absDiff = [](int a, int b) { return a > b ? (a - b) : (b - a); };
 
         BMPImage smileyBmp = example_api::createSmiley256BMP();
@@ -165,11 +181,58 @@ int main() {
             return 1;
         }
 
+        const std::string tahoeInputWebp = samplesDir + "/tahoe200-finish.webp";
+        if (!std::filesystem::exists(tahoeInputWebp)) {
+            std::cout << "Skipping Tahoe effect samples (missing " << tahoeInputWebp << ")\n";
+        } else if (!WEBPImage::isToolingAvailable()) {
+            std::cout << "Skipping Tahoe effect samples (install cwebp and dwebp to enable WebP decode)\n";
+        } else {
+            WEBPImage tahoeWebp = WEBPImage::load(tahoeInputWebp);
+
+            PNGImage tahoeOriginal = rasterToPNG(tahoeWebp);
+            if (!tahoeOriginal.save(samplesDir + "/tahoe200-original.png")) {
+                std::cerr << "Failed to write tahoe200-original.png\n";
+                return 1;
+            }
+
+            WEBPImage tahoeGrayWebp = tahoeWebp;
+            applyGrayscale(tahoeGrayWebp);
+            PNGImage tahoeGray = rasterToPNG(tahoeGrayWebp);
+            if (!tahoeGray.save(samplesDir + "/tahoe200-grayscale.png")) {
+                std::cerr << "Failed to write tahoe200-grayscale.png\n";
+                return 1;
+            }
+
+            WEBPImage tahoeSepiaWebp = tahoeWebp;
+            applySepia(tahoeSepiaWebp, 1.0f);
+            PNGImage tahoeSepia = rasterToPNG(tahoeSepiaWebp);
+            if (!tahoeSepia.save(samplesDir + "/tahoe200-sepia.png")) {
+                std::cerr << "Failed to write tahoe200-sepia.png\n";
+                return 1;
+            }
+
+            Document doc(tahoeWebp.width(), tahoeWebp.height());
+            Layer layer("Tahoe Layer", tahoeWebp.width(), tahoeWebp.height(), PixelRGBA8(0, 0, 0, 0));
+            layer.image() = fromRasterImage(tahoeWebp, 255);
+            applySepia(layer, 0.65f);
+            doc.addLayer(layer);
+
+            const ImageBuffer layeredSepiaBuffer = doc.composite();
+            PNGImage tahoeSepiaLayered(tahoeWebp.width(), tahoeWebp.height(), Color(0, 0, 0));
+            copyToRasterImage(layeredSepiaBuffer, tahoeSepiaLayered);
+            if (!tahoeSepiaLayered.save(samplesDir + "/tahoe200-sepia-layered.png")) {
+                std::cerr << "Failed to write tahoe200-sepia-layered.png\n";
+                return 1;
+            }
+        }
+
         std::cout << "Wrote smiley.bmp, smiley.png, smiley.jpg, smiley.gif, "
                      "smiley.svg, smiley_svg_rasterized_512.png, smiley_copy.bmp, smiley_copy.png, smiley_copy.jpg, smiley_copy.gif, "
                      "smiley_copy.svg, layered_blend.png, smiley_resize_128.png, smiley_resize_512.png, smiley_resize_512_nearest.png, "
                      "smiley_resize_512_box_average.png, "
-                     "smiley_direct.png, smiley_layered.png, and smiley_layer_diff.png ("
+                     "smiley_direct.png, smiley_layered.png, smiley_layer_diff.png, "
+                     "samples/tahoe200-original.png, samples/tahoe200-grayscale.png, "
+                     "samples/tahoe200-sepia.png, and samples/tahoe200-sepia-layered.png ("
                   << bmpDecoded.width() << "x" << bmpDecoded.height() << ")\n";
         std::cout << "Layered vs direct smiley diff: mean=" << meanDiff << " max=" << maxDiff << "\n";
     } catch (const std::exception& ex) {
