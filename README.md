@@ -25,13 +25,17 @@ make
 
 Main commands:
 - `./build/bin/image_flow new --width <w> --height <h> --out <project.iflow>`
+- `./build/bin/image_flow new --from-image <file> [--fit <w>x<h>] --out <project.iflow>`
 - `./build/bin/image_flow info --in <project.iflow>`
 - `./build/bin/image_flow render --in <project.iflow> --out <image.{png|bmp|jpg|gif|webp|svg}>`
 - `./build/bin/image_flow ops --in <project.iflow> --out <project.iflow> --op "<action key=value ...>" [--op ...] [--render <image.png>]`
+- `./build/bin/image_flow ops --in <project.iflow> --out <project.iflow> --ops-file <ops.txt> [--render <image.png>]`
+- `cat ops.txt | ./build/bin/image_flow ops --in <project.iflow> --out <project.iflow> --stdin`
 
 ### IFLOW Ops
 `image_flow ops` applies deterministic edits to an IFLOW document. Useful actions include:
 - `add-layer`, `add-group`
+- `add-grid-layers`
 - `set-layer`, `set-group`
 - `set-transform` (translate/rotate or matrix)
 - `apply-effect` (`grayscale`, `sepia`)
@@ -41,11 +45,12 @@ Main commands:
 
 Example:
 ```bash
+./build/bin/image_flow new --from-image samples/tahoe200-finish.webp --fit 1200x800 --out build/output/images/demo.iflow
 ./build/bin/image_flow ops \
-  --width 512 --height 512 \
+  --in build/output/images/demo.iflow \
   --out build/output/images/demo.iflow \
-  --op "add-layer name=Base fill=0,0,0,255" \
-  --op "set-layer path=/0 opacity=0.9"
+  --op "add-grid-layers rows=4 cols=6 border=10 opacity=0.62 fills=255,80,80,190;255,170,40,190;240,240,70,190;100,210,120,190;70,190,230,190;110,130,255,190;185,110,255,190;255,105,195,190 blends=overlay;screen;lighten;difference" \
+  --render build/output/images/demo.png
 ```
 
 ## Sample Generator

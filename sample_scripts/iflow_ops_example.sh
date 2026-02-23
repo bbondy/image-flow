@@ -8,6 +8,7 @@ INPUT_IMAGE="$ROOT_DIR/samples/tahoe200-finish.webp"
 OUT_DIR="$ROOT_DIR/build/output/images"
 PROJECT_PATH="$OUT_DIR/tahoe_boxes.iflow"
 RENDER_PATH="$OUT_DIR/tahoe_boxes.png"
+OPS_PATH="$OUT_DIR/tahoe_boxes.ops"
 
 # Tunable output size and grid layout.
 WIDTH=1200
@@ -27,69 +28,14 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-# Start a document, import the sample image, and resize it to a manageable canvas.
-"$BIN" ops \
-  --width "$WIDTH" \
-  --height "$HEIGHT" \
-  --out "$PROJECT_PATH" \
-  --op "add-layer name=Base width=${WIDTH} height=${HEIGHT} fill=0,0,0,255" \
-  --op "import-image path=/0 file=${INPUT_IMAGE}" \
-  --op "resize-layer path=/0 width=${WIDTH} height=${HEIGHT} filter=bilinear"
+"$BIN" new --from-image "$INPUT_IMAGE" --fit "${WIDTH}x${HEIGHT}" --out "$PROJECT_PATH"
 
-colors=(
-  "255,80,80,190"
-  "255,170,40,190"
-  "240,240,70,190"
-  "100,210,120,190"
-  "70,190,230,190"
-  "110,130,255,190"
-  "185,110,255,190"
-  "255,105,195,190"
-)
+cat > "$OPS_PATH" <<'OPS'
+# Add colored overlay boxes with a 10px gutter around each tile.
+add-grid-layers rows=4 cols=6 border=10 name_prefix=Box opacity=0.62 fills=255,80,80,190;255,170,40,190;240,240,70,190;100,210,120,190;70,190,230,190;110,130,255,190;185,110,255,190;255,105,195,190 blends=overlay;screen;lighten;difference
+OPS
 
-blends=(
-  "overlay"
-  "screen"
-  "lighten"
-  "difference"
-)
-
-tile_w=$((WIDTH / COLS))
-tile_h=$((HEIGHT / ROWS))
-inner_w=$((tile_w - (BORDER * 2)))
-inner_h=$((tile_h - (BORDER * 2)))
-
-if (( inner_w <= 0 || inner_h <= 0 )); then
-  echo "Grid/border settings leave no drawable tile area" >&2
-  exit 1
-fi
-
-layer_index=1
-color_index=0
-blend_index=0
-
-for ((row = 0; row < ROWS; ++row)); do
-  for ((col = 0; col < COLS; ++col)); do
-    x=$((col * tile_w + BORDER))
-    y=$((row * tile_h + BORDER))
-
-    color="${colors[$((color_index % ${#colors[@]}))]}"
-    blend="${blends[$((blend_index % ${#blends[@]}))]}"
-
-    "$BIN" ops \
-      --in "$PROJECT_PATH" \
-      --out "$PROJECT_PATH" \
-      --op "add-layer name=Box_${row}_${col} width=${inner_w} height=${inner_h} fill=${color}" \
-      --op "set-layer path=/${layer_index} blend=${blend} opacity=0.62" \
-      --op "set-layer path=/${layer_index} offset=${x},${y}"
-
-    layer_index=$((layer_index + 1))
-    color_index=$((color_index + 1))
-    blend_index=$((blend_index + 1))
-  done
-done
-
-"$BIN" render --in "$PROJECT_PATH" --out "$RENDER_PATH"
+"$BIN" ops --in "$PROJECT_PATH" --out "$PROJECT_PATH" --ops-file "$OPS_PATH" --render "$RENDER_PATH"
 
 echo "Wrote project: $PROJECT_PATH"
 echo "Wrote render:  $RENDER_PATH"
