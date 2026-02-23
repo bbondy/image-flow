@@ -6,18 +6,13 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BIN="$ROOT_DIR/build/bin/image_flow"
 INPUT_IMAGE="${1:-$ROOT_DIR/samples/smiley.png}"
 VARIATION_COUNT="${2:-20}"
-COPIES_PER_VARIATION="${3:-6}"
+TRANSFORM_PASSES="${3:-3}"
 OUT_DIR="$ROOT_DIR/build/output/images"
 INPUT_NAME="$(basename "$INPUT_IMAGE")"
 INPUT_STEM="${INPUT_NAME%.*}"
 VAR_DIR="$OUT_DIR/${INPUT_STEM}_transform_variations"
 PROJECT_PATH="$VAR_DIR/${INPUT_STEM}_transform_variations.iflow"
 OPS_PATH="$VAR_DIR/${INPUT_STEM}_transform_variations.ops"
-
-WIDTH=900
-HEIGHT=900
-CX=450
-CY=450
 
 if [[ ! -f "$INPUT_IMAGE" ]]; then
   echo "Missing input image: $INPUT_IMAGE" >&2
@@ -29,8 +24,8 @@ if ! [[ "$VARIATION_COUNT" =~ ^[0-9]+$ ]] || [[ "$VARIATION_COUNT" -lt 1 ]]; the
   exit 1
 fi
 
-if ! [[ "$COPIES_PER_VARIATION" =~ ^[0-9]+$ ]] || [[ "$COPIES_PER_VARIATION" -lt 1 ]]; then
-  echo "Copies per variation must be a positive integer, got: $COPIES_PER_VARIATION" >&2
+if ! [[ "$TRANSFORM_PASSES" =~ ^[0-9]+$ ]] || [[ "$TRANSFORM_PASSES" -lt 1 ]]; then
+  echo "Transform passes must be a positive integer, got: $TRANSFORM_PASSES" >&2
   exit 1
 fi
 
@@ -40,57 +35,74 @@ fi
 
 mkdir -p "$OUT_DIR" "$VAR_DIR"
 
-"$BIN" new --from-image "$INPUT_IMAGE" --fit "${WIDTH}x${HEIGHT}" --out "$PROJECT_PATH"
+"$BIN" new --from-image "$INPUT_IMAGE" --out "$PROJECT_PATH"
+
+SIZE_LINE="$($BIN info --in "$PROJECT_PATH" | rg '^Size:' | head -n 1)"
+if [[ -z "$SIZE_LINE" ]]; then
+  echo "Unable to determine project size from: $PROJECT_PATH" >&2
+  exit 1
+fi
+
+SIZE_TEXT="${SIZE_LINE#Size: }"
+WIDTH="${SIZE_TEXT%x*}"
+HEIGHT="${SIZE_TEXT#*x}"
+CX=$((WIDTH / 2))
+CY=$((HEIGHT / 2))
+MAX_TX=$((WIDTH / 8))
+MAX_TY=$((HEIGHT / 8))
 
 cat > "$OPS_PATH" <<OPS
-set-layer path=/0 opacity=0.82
-apply-effect path=/0 effect=sepia strength=0.20
+set-layer path=/0 blend=normal opacity=1.0
 OPS
-
-blend_modes=(screen overlay add lighten difference multiply)
 
 for idx in $(seq 1 "$VARIATION_COUNT"); do
   tag="$(printf "%02d" "$idx")"
-  group_path="/$idx"
 
   cat >> "$OPS_PATH" <<OPS
-add-group name=variation_${tag}
+import-image path=/0 file=$INPUT_IMAGE
+set-layer path=/0 blend=normal opacity=1.0
+clear-transform path=/0
 OPS
 
-  for copy in $(seq 1 "$COPIES_PER_VARIATION"); do
-    layer_path="${group_path}/$((copy - 1))"
-    blend="${blend_modes[$(((idx + copy - 2) % ${#blend_modes[@]}))]}"
+  for pass in $(seq 1 "$TRANSFORM_PASSES"); do
+    rot=$(( ((idx * 19 + pass * 13) % 51) - 25 ))
+    skx=$(( ((idx * 11 + pass * 7) % 21) - 10 ))
+    sky=$(( ((idx * 17 + pass * 5) % 21) - 10 ))
 
-    rot=$(( ((idx * 17 + copy * 11) % 81) - 40 ))
-    tx=$(( ((idx * 37 + copy * 19) % 321) - 160 ))
-    ty=$(( ((idx * 29 + copy * 23) % 321) - 160 ))
-    skx=$(( ((idx * 13 + copy * 7) % 33) - 16 ))
-    sky=$(( ((idx * 11 + copy * 9) % 33) - 16 ))
+    tx=$(( ((idx * 29 + pass * 23) % (2 * MAX_TX + 1)) - MAX_TX ))
+    ty=$(( ((idx * 31 + pass * 21) % (2 * MAX_TY + 1)) - MAX_TY ))
 
-    scale_x=$(awk -v v="$idx" -v c="$copy" 'BEGIN { printf "%.2f", 0.72 + ((v*5 + c*4) % 57) / 100.0 }')
-    scale_y=$(awk -v v="$idx" -v c="$copy" 'BEGIN { printf "%.2f", 0.72 + ((v*7 + c*3) % 57) / 100.0 }')
-    opacity=$(awk -v v="$idx" -v c="$copy" 'BEGIN { printf "%.2f", 0.30 + ((v*3 + c*5) % 48) / 100.0 }')
+    scale_x=$(awk -v v="$idx" -v p="$pass" 'BEGIN { printf "%.2f", 0.86 + ((v*7 + p*5) % 27) / 100.0 }')
+    scale_y=$(awk -v v="$idx" -v p="$pass" 'BEGIN { printf "%.2f", 0.86 + ((v*5 + p*7) % 27) / 100.0 }')
 
     cat >> "$OPS_PATH" <<OPS
-add-layer parent=${group_path} name=copy_${copy} width=${WIDTH} height=${HEIGHT} fill=0,0,0,0
-import-image path=${layer_path} file=$INPUT_IMAGE
-set-layer path=${layer_path} blend=${blend} opacity=${opacity}
-concat-transform path=${layer_path} scale=${scale_x},${scale_y} pivot=${CX},${CY}
-concat-transform path=${layer_path} rotate=${rot} pivot=${CX},${CY}
-concat-transform path=${layer_path} skew=${skx},${sky} pivot=${CX},${CY}
-concat-transform path=${layer_path} translate=${tx},${ty}
+concat-transform path=/0 scale=${scale_x},${scale_y} pivot=${CX},${CY}
+concat-transform path=/0 rotate=${rot} pivot=${CX},${CY}
+concat-transform path=/0 skew=${skx},${sky} pivot=${CX},${CY}
+concat-transform path=/0 translate=${tx},${ty}
 OPS
-
-    if (( copy % 3 == 0 )); then
-      cat >> "$OPS_PATH" <<OPS
-apply-effect path=${layer_path} effect=grayscale
-OPS
-    fi
   done
+
+  if (( idx % 4 == 0 )); then
+    cat >> "$OPS_PATH" <<OPS
+apply-effect path=/0 effect=grayscale
+OPS
+  fi
+
+  if (( idx % 6 == 0 )); then
+    cat >> "$OPS_PATH" <<OPS
+levels path=/0 in_black=8 in_white=246 gamma=1.03 out_black=0 out_white=255
+OPS
+  fi
+
+  if (( idx % 9 == 0 )); then
+    cat >> "$OPS_PATH" <<OPS
+apply-effect path=/0 effect=sepia strength=0.22
+OPS
+  fi
 
   cat >> "$OPS_PATH" <<OPS
 emit file=${VAR_DIR}/${INPUT_STEM}_transform_${tag}.png
-set-group path=${group_path} visible=false
 OPS
 done
 
