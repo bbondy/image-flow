@@ -23,6 +23,7 @@ Binaries:
 ## CLI Commands
 ```bash
 ./build/bin/image_flow help
+./build/bin/image_flow help ops
 ```
 
 - `image_flow new --width <w> --height <h> --out <project.iflow>`
@@ -32,6 +33,17 @@ Binaries:
 - `image_flow ops --in <project.iflow> --out <project.iflow> --op "<action key=value ...>" [--op ...]`
 - `image_flow ops --in <project.iflow> --out <project.iflow> --ops-file <ops.txt>`
 - `cat ops.txt | image_flow ops --in <project.iflow> --out <project.iflow> --stdin`
+
+CLI behavior notes:
+- `new`: choose exactly one source mode:
+  - `--width/--height` for a blank project, or
+  - `--from-image` (optionally with `--fit`) to seed from an image.
+- `ops`: choose exactly one input mode:
+  - `--in <project.iflow>`, or
+  - `--width/--height` to start from an empty in-memory document.
+- `--op` tokenization supports quoted values:
+  - `name="Layer One"` or `name='Layer One'`
+  - Escape quote or backslash inside values with `\`.
 
 ## Blend Modes
 - `normal`
