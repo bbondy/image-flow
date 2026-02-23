@@ -259,6 +259,22 @@ std::pair<double, double> parseDoublePair(const std::string& text) {
     return {std::stod(parts[0]), std::stod(parts[1])};
 }
 
+std::vector<std::pair<int, int>> parseDrawPoints(const std::string& text,
+                                                 std::size_t minPoints,
+                                                 const std::string& action) {
+    const std::vector<std::string> tokens = splitNonEmptyByChar(text, ';');
+    std::vector<std::pair<int, int>> points;
+    points.reserve(tokens.size());
+    for (const std::string& token : tokens) {
+        points.push_back(parseIntPair(token));
+    }
+    if (points.size() < minPoints) {
+        throw std::runtime_error(action + " requires at least " + std::to_string(minPoints) +
+                                 " points in points=x0,y0;x1,y1;...");
+    }
+    return points;
+}
+
 PixelRGBA8 parseRGBA(const std::string& text, bool allowRgb = false) {
     const std::vector<std::string> parts = splitByChar(text, ',');
     if (parts.size() == 3 && allowRgb) {
@@ -1803,6 +1819,48 @@ void applyOperation(Document& document, const std::string& opSpec) {
         drawable.fillEllipse(std::stoi(kv.at("cx")), std::stoi(kv.at("cy")),
                              std::stoi(kv.at("rx")), std::stoi(kv.at("ry")),
                              Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    if (action == "draw-polyline") {
+        if (kv.find("path") == kv.end() || kv.find("points") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-polyline requires path= points= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const std::vector<std::pair<int, int>> points = parseDrawPoints(kv.at("points"), 2, "draw-polyline");
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.polyline(points, Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    if (action == "draw-polygon") {
+        if (kv.find("path") == kv.end() || kv.find("points") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-polygon requires path= points= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const std::vector<std::pair<int, int>> points = parseDrawPoints(kv.at("points"), 3, "draw-polygon");
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.polygon(points, Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    if (action == "draw-fill-polygon") {
+        if (kv.find("path") == kv.end() || kv.find("points") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-fill-polygon requires path= points= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const std::vector<std::pair<int, int>> points = parseDrawPoints(kv.at("points"), 3, "draw-fill-polygon");
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.fillPolygon(points, Color(rgba.r, rgba.g, rgba.b));
         return;
     }
 

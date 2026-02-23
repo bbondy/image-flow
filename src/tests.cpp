@@ -18,6 +18,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 struct DiffStats {
@@ -326,6 +327,36 @@ void testDrawableEllipseAndFillEllipse() {
     require(outside.r == 0 && outside.g == 0 && outside.b == 0, "fillEllipse should not affect outside pixels");
 }
 
+void testDrawablePolylineAndPolygon() {
+    PNGImage polylineImage(12, 12, Color(0, 0, 0));
+    Drawable dPolyline(polylineImage);
+    dPolyline.polyline({{1, 1}, {8, 1}, {8, 6}}, Color(255, 255, 0));
+    const Color horizontal = polylineImage.getPixel(4, 1);
+    const Color vertical = polylineImage.getPixel(8, 4);
+    const Color untouched = polylineImage.getPixel(2, 4);
+    require(horizontal.r == 255 && horizontal.g == 255 && horizontal.b == 0, "polyline should draw first segment");
+    require(vertical.r == 255 && vertical.g == 255 && vertical.b == 0, "polyline should draw second segment");
+    require(untouched.r == 0 && untouched.g == 0 && untouched.b == 0, "polyline should not fill enclosed area");
+
+    const std::vector<std::pair<int, int>> tri = {{2, 2}, {9, 2}, {5, 8}};
+
+    PNGImage polygonImage(12, 12, Color(0, 0, 0));
+    Drawable dPolygon(polygonImage);
+    dPolygon.polygon(tri, Color(255, 0, 255));
+    const Color edge = polygonImage.getPixel(5, 2);
+    const Color centerUnfilled = polygonImage.getPixel(5, 5);
+    require(edge.r == 255 && edge.g == 0 && edge.b == 255, "polygon should draw closed outline");
+    require(centerUnfilled.r == 0 && centerUnfilled.g == 0 && centerUnfilled.b == 0, "polygon should keep center unfilled");
+
+    PNGImage fillPolygonImage(12, 12, Color(0, 0, 0));
+    Drawable dFillPolygon(fillPolygonImage);
+    dFillPolygon.fillPolygon(tri, Color(0, 255, 255));
+    const Color inside = fillPolygonImage.getPixel(5, 5);
+    const Color outside = fillPolygonImage.getPixel(0, 0);
+    require(inside.r == 0 && inside.g == 255 && inside.b == 255, "fillPolygon should fill interior");
+    require(outside.r == 0 && outside.g == 0 && outside.b == 0, "fillPolygon should not affect outside pixels");
+}
+
 void testRasterResizeFilters() {
     PNGImage src(2, 2, Color(0, 0, 0));
     src.setPixel(0, 0, Color(0, 0, 0));
@@ -511,6 +542,7 @@ int main() {
         testLayerMaskCanBeCleared();
         testDrawableRectAndFillRect();
         testDrawableEllipseAndFillEllipse();
+        testDrawablePolylineAndPolygon();
         testRasterResizeFilters();
         testEffectsOnRasterImage();
         testEffectsOnLayerImageBuffer();

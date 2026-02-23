@@ -71,11 +71,15 @@ Binaries:
 - `draw-fill-rect`
 - `draw-ellipse`
 - `draw-fill-ellipse`
+- `draw-polyline`
+- `draw-polygon`
+- `draw-fill-polygon`
 - `draw-circle`
 - `draw-fill-circle`
 - `draw-arc`
 
 All draw ops support `target=image|mask`.
+`draw-polyline`, `draw-polygon`, and `draw-fill-polygon` use `points=x0,y0;x1,y1;...`.
 
 ### Masks and Pixels
 - `mask-enable`

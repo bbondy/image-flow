@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace {
 bool normalizeRect(int x, int y, int width, int height, int& left, int& top, int& right, int& bottom) {
@@ -149,6 +150,70 @@ void Drawable::fillEllipse(int cx, int cy, int rx, int ry, const Color& color) {
         const int xSpan = static_cast<int>(std::floor(span + 0.5f));
         for (int dx = -xSpan; dx <= xSpan; ++dx) {
             m_image.setPixel(cx + dx, cy + dy, color);
+        }
+    }
+}
+
+void Drawable::polyline(const std::vector<std::pair<int, int>>& points, const Color& color) {
+    if (points.size() < 2) {
+        return;
+    }
+    for (std::size_t i = 1; i < points.size(); ++i) {
+        line(points[i - 1].first, points[i - 1].second, points[i].first, points[i].second, color);
+    }
+}
+
+void Drawable::polygon(const std::vector<std::pair<int, int>>& points, const Color& color) {
+    if (points.size() < 2) {
+        return;
+    }
+    polyline(points, color);
+    line(points.back().first, points.back().second, points.front().first, points.front().second, color);
+}
+
+void Drawable::fillPolygon(const std::vector<std::pair<int, int>>& points, const Color& color) {
+    if (points.size() < 3) {
+        return;
+    }
+
+    int minY = points.front().second;
+    int maxY = points.front().second;
+    for (const auto& p : points) {
+        minY = std::min(minY, p.second);
+        maxY = std::max(maxY, p.second);
+    }
+
+    for (int y = minY; y <= maxY; ++y) {
+        const double scanY = static_cast<double>(y) + 0.5;
+        std::vector<double> intersections;
+        intersections.reserve(points.size());
+
+        for (std::size_t i = 0; i < points.size(); ++i) {
+            const auto& a = points[i];
+            const auto& b = points[(i + 1) % points.size()];
+            if (a.second == b.second) {
+                continue;
+            }
+
+            const int edgeMinY = std::min(a.second, b.second);
+            const int edgeMaxY = std::max(a.second, b.second);
+            if (!(scanY >= static_cast<double>(edgeMinY) && scanY < static_cast<double>(edgeMaxY))) {
+                continue;
+            }
+
+            const double t = (scanY - static_cast<double>(a.second)) /
+                             static_cast<double>(b.second - a.second);
+            const double x = static_cast<double>(a.first) + t * static_cast<double>(b.first - a.first);
+            intersections.push_back(x);
+        }
+
+        std::sort(intersections.begin(), intersections.end());
+        for (std::size_t i = 0; i + 1 < intersections.size(); i += 2) {
+            const int xStart = static_cast<int>(std::ceil(intersections[i]));
+            const int xEnd = static_cast<int>(std::floor(intersections[i + 1]));
+            for (int x = xStart; x <= xEnd; ++x) {
+                m_image.setPixel(x, y, color);
+            }
         }
     }
 }
