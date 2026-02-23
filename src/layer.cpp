@@ -244,11 +244,18 @@ const PixelRGBA8& ImageBuffer::getPixel(int x, int y) const {
     return m_pixels[pixelIndex(x, y, m_width)];
 }
 
-void ImageBuffer::setPixel(int x, int y, const PixelRGBA8& pixel) {
+bool ImageBuffer::trySetPixel(int x, int y, const PixelRGBA8& pixel) {
     if (!inBounds(x, y)) {
-        return;
+        return false;
     }
     m_pixels[pixelIndex(x, y, m_width)] = pixel;
+    return true;
+}
+
+void ImageBuffer::setPixel(int x, int y, const PixelRGBA8& pixel) {
+    if (!trySetPixel(x, y, pixel)) {
+        throw std::out_of_range("ImageBuffer pixel out of bounds");
+    }
 }
 
 void ImageBuffer::fill(const PixelRGBA8& pixel) {

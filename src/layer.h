@@ -43,6 +43,7 @@ public:
 
     bool inBounds(int x, int y) const;
     const PixelRGBA8& getPixel(int x, int y) const;
+    bool trySetPixel(int x, int y, const PixelRGBA8& pixel);
     void setPixel(int x, int y, const PixelRGBA8& pixel);
     void fill(const PixelRGBA8& pixel);
 
