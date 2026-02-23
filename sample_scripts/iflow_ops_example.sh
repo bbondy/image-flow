@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BIN="$ROOT_DIR/build/bin/iflow"
+BIN="$ROOT_DIR/build/bin/image_flow"
 INPUT_IMAGE="$ROOT_DIR/samples/tahoe200-finish.webp"
 OUT_DIR="$ROOT_DIR/build/output/images"
 PROJECT_PATH="$OUT_DIR/tahoe_boxes.iflow"
@@ -28,7 +28,7 @@ fi
 mkdir -p "$OUT_DIR"
 
 # Start a document, import the sample image, and resize it to a manageable canvas.
-"$BIN" iflow ops \
+"$BIN" ops \
   --width "$WIDTH" \
   --height "$HEIGHT" \
   --out "$PROJECT_PATH" \
@@ -76,7 +76,7 @@ for ((row = 0; row < ROWS; ++row)); do
     color="${colors[$((color_index % ${#colors[@]}))]}"
     blend="${blends[$((blend_index % ${#blends[@]}))]}"
 
-    "$BIN" iflow ops \
+    "$BIN" ops \
       --in "$PROJECT_PATH" \
       --out "$PROJECT_PATH" \
       --op "add-layer name=Box_${row}_${col} width=${inner_w} height=${inner_h} fill=${color}" \
@@ -89,7 +89,7 @@ for ((row = 0; row < ROWS; ++row)); do
   done
 done
 
-"$BIN" iflow render --in "$PROJECT_PATH" --out "$RENDER_PATH"
+"$BIN" render --in "$PROJECT_PATH" --out "$RENDER_PATH"
 
 echo "Wrote project: $PROJECT_PATH"
 echo "Wrote render:  $RENDER_PATH"
