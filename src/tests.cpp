@@ -11,6 +11,7 @@
 #include "webp.h"
 
 #include <cmath>
+#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
@@ -61,6 +62,13 @@ DiffStats compareImages(const Image& a, const Image& b) {
     return stats;
 }
 
+std::string uniqueTestPath(const std::string& dir, const std::string& stem, const std::string& ext) {
+    static std::uint64_t counter = 0;
+    const auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    ++counter;
+    return dir + "/" + stem + "_" + std::to_string(now) + "_" + std::to_string(counter) + ext;
+}
+
 void testReferenceSmileyShape() {
     PNGImage ref = example_api::createSmiley256PNG();
 
@@ -109,8 +117,9 @@ void testCodecRoundtripAgainstReference() {
     }
 
     JPGImage jpg = example_api::createSmiley256JPG();
-    require(jpg.save(testOutDir + "/test_ref.jpg"), "Failed saving JPG in test");
-    JPGImage jpgDecoded = JPGImage::load(testOutDir + "/test_ref.jpg");
+    const std::string jpgPath = uniqueTestPath(testOutDir, "test_ref", ".jpg");
+    require(jpg.save(jpgPath), "Failed saving JPG in test");
+    JPGImage jpgDecoded = JPGImage::load(jpgPath);
     {
         const DiffStats s = compareImages(reference, jpgDecoded);
         std::cout << "JPEG diff stats mean=" << s.meanAbs << " max=" << s.maxAbs << "\n";
