@@ -279,8 +279,7 @@ void testLayerMaskVisibilityControl() {
     doc.addLayer(background);
 
     Layer fg("Foreground", 2, 1, PixelRGBA8(200, 100, 50, 255));
-    fg.enableMask(PixelRGBA8(255, 255, 255, 255));
-    fg.mask().setPixel(1, 0, PixelRGBA8(0, 0, 0, 255));
+    fg.ensureMask(PixelRGBA8(255, 255, 255, 255)).setPixel(1, 0, PixelRGBA8(0, 0, 0, 255));
     doc.addLayer(fg);
 
     const ImageBuffer out = doc.composite();
@@ -647,8 +646,7 @@ void testIFLOWSerializationRoundtripPreservesStack() {
 
     Layer fill("Fill", 2, 2, PixelRGBA8(220, 180, 80, 255));
     fill.transform().setTranslation(1.0, 0.0);
-    fill.enableMask(PixelRGBA8(255, 255, 255, 255));
-    fill.mask().setPixel(1, 1, PixelRGBA8(0, 0, 0, 255));
+    fill.ensureMask(PixelRGBA8(255, 255, 255, 255)).setPixel(1, 1, PixelRGBA8(0, 0, 0, 255));
     faceGroup.addLayer(fill);
 
     Layer shade("Shade", 2, 2, PixelRGBA8(20, 40, 100, 180));

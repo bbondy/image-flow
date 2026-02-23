@@ -75,8 +75,11 @@ public:
     void setOffset(int x, int y);
 
     bool hasMask() const;
+    ImageBuffer& ensureMask(const PixelRGBA8& fill = PixelRGBA8(255, 255, 255, 255));
     void enableMask(const PixelRGBA8& fill = PixelRGBA8(255, 255, 255, 255));
     void clearMask();
+    ImageBuffer& maskOrThrow();
+    const ImageBuffer& maskOrThrow() const;
     ImageBuffer& mask();
     const ImageBuffer& mask() const;
 

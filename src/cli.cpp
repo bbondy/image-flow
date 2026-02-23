@@ -1432,9 +1432,9 @@ ImageBuffer& resolveDrawTargetBuffer(Layer& layer, const std::unordered_map<std:
     if (target == "mask") {
         if (!layer.hasMask()) {
             const PixelRGBA8 maskFill = kv.find("mask_fill") == kv.end() ? PixelRGBA8(0, 0, 0, 255) : parseRGBA(kv.at("mask_fill"), true);
-            layer.enableMask(maskFill);
+            layer.ensureMask(maskFill);
         }
-        return layer.mask();
+        return layer.maskOrThrow();
     }
     throw std::runtime_error("target must be image or mask");
 }
@@ -2336,9 +2336,9 @@ void applyOperation(Document& document, const std::string& opSpec, const std::fu
         }
         Layer& layer = resolveLayerPath(document, kv.at("path"));
         if (!layer.hasMask()) {
-            layer.enableMask();
+            layer.ensureMask();
         }
-        layer.mask().setPixel(std::stoi(kv.at("x")), std::stoi(kv.at("y")), parseRGBA(kv.at("rgba")));
+        layer.maskOrThrow().setPixel(std::stoi(kv.at("x")), std::stoi(kv.at("y")), parseRGBA(kv.at("rgba")));
         return;
     }
 

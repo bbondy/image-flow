@@ -330,9 +330,31 @@ bool Layer::hasMask() const {
     return m_hasMask;
 }
 
+ImageBuffer& Layer::ensureMask(const PixelRGBA8& fill) {
+    if (!m_hasMask) {
+        m_mask = ImageBuffer(m_image.width(), m_image.height(), fill);
+        m_hasMask = true;
+    }
+    return m_mask;
+}
+
 void Layer::enableMask(const PixelRGBA8& fill) {
     m_mask = ImageBuffer(m_image.width(), m_image.height(), fill);
     m_hasMask = true;
+}
+
+ImageBuffer& Layer::maskOrThrow() {
+    if (!m_hasMask) {
+        throw std::logic_error("Layer mask is not enabled");
+    }
+    return m_mask;
+}
+
+const ImageBuffer& Layer::maskOrThrow() const {
+    if (!m_hasMask) {
+        throw std::logic_error("Layer mask is not enabled");
+    }
+    return m_mask;
 }
 
 void Layer::clearMask() {
@@ -341,17 +363,11 @@ void Layer::clearMask() {
 }
 
 ImageBuffer& Layer::mask() {
-    if (!m_hasMask) {
-        enableMask();
-    }
-    return m_mask;
+    return maskOrThrow();
 }
 
 const ImageBuffer& Layer::mask() const {
-    if (!m_hasMask) {
-        throw std::logic_error("Layer mask is not enabled");
-    }
-    return m_mask;
+    return maskOrThrow();
 }
 
 ImageBuffer& Layer::image() {
