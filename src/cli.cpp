@@ -915,6 +915,141 @@ void applyCurvesToBuffer(ImageBuffer& image,
     }
 }
 
+float hashUnitNoise(int x, int y, std::uint32_t seed) {
+    std::uint32_t n = static_cast<std::uint32_t>(x) * 374761393u;
+    n ^= static_cast<std::uint32_t>(y) * 668265263u;
+    n ^= seed * 2246822519u;
+    n = (n ^ (n >> 13)) * 1274126177u;
+    n ^= (n >> 16);
+    return static_cast<float>(n & 0x00ffffffu) / static_cast<float>(0x01000000u);
+}
+
+float smoothstep01(float t) {
+    const float c = clamp01(t);
+    return c * c * (3.0f - 2.0f * c);
+}
+
+float valueNoise(float x, float y, std::uint32_t seed) {
+    const int x0 = static_cast<int>(std::floor(x));
+    const int y0 = static_cast<int>(std::floor(y));
+    const int x1 = x0 + 1;
+    const int y1 = y0 + 1;
+    const float tx = smoothstep01(x - static_cast<float>(x0));
+    const float ty = smoothstep01(y - static_cast<float>(y0));
+
+    const float v00 = hashUnitNoise(x0, y0, seed);
+    const float v10 = hashUnitNoise(x1, y0, seed);
+    const float v01 = hashUnitNoise(x0, y1, seed);
+    const float v11 = hashUnitNoise(x1, y1, seed);
+
+    const float a = v00 + (v10 - v00) * tx;
+    const float b = v01 + (v11 - v01) * tx;
+    return a + (b - a) * ty;
+}
+
+float fractalNoise(float x, float y, int octaves, float lacunarity, float gain, std::uint32_t seed) {
+    float amplitude = 1.0f;
+    float frequency = 1.0f;
+    float sum = 0.0f;
+    float norm = 0.0f;
+    for (int o = 0; o < octaves; ++o) {
+        const std::uint32_t octaveSeed = seed + static_cast<std::uint32_t>(o * 1013);
+        sum += amplitude * valueNoise(x * frequency, y * frequency, octaveSeed);
+        norm += amplitude;
+        amplitude *= gain;
+        frequency *= lacunarity;
+    }
+    if (norm <= 0.0f) {
+        return 0.0f;
+    }
+    return sum / norm;
+}
+
+void applyFractalNoiseToBuffer(ImageBuffer& image,
+                               float scale,
+                               int octaves,
+                               float lacunarity,
+                               float gain,
+                               float amount,
+                               std::uint32_t seed,
+                               bool monochrome) {
+    const float s = scale <= 0.0f ? 64.0f : scale;
+    const int oct = std::max(1, octaves);
+    const float lac = std::max(1.01f, lacunarity);
+    const float g = std::max(0.01f, std::min(1.0f, gain));
+    const float mix = clamp01(amount);
+
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const PixelRGBA8 src = image.getPixel(x, y);
+            const float nx = static_cast<float>(x) / s;
+            const float ny = static_cast<float>(y) / s;
+            const float n = fractalNoise(nx, ny, oct, lac, g, seed);
+            const float c = (n * 2.0f) - 1.0f;
+            int dr = static_cast<int>(std::lround(c * 255.0f * mix));
+            int dg = dr;
+            int db = dr;
+            if (!monochrome) {
+                const float n2 = fractalNoise(nx + 37.2f, ny + 11.7f, oct, lac, g, seed + 97u);
+                const float n3 = fractalNoise(nx + 73.9f, ny + 19.3f, oct, lac, g, seed + 211u);
+                dg = static_cast<int>(std::lround(((n2 * 2.0f) - 1.0f) * 255.0f * mix));
+                db = static_cast<int>(std::lround(((n3 * 2.0f) - 1.0f) * 255.0f * mix));
+            }
+            image.setPixel(x, y, PixelRGBA8(clampByte(static_cast<int>(src.r) + dr),
+                                            clampByte(static_cast<int>(src.g) + dg),
+                                            clampByte(static_cast<int>(src.b) + db),
+                                            src.a));
+        }
+    }
+}
+
+bool hatchHit(int x, int y, int spacing, int width, int mode) {
+    const int m = std::max(1, spacing);
+    const int w = std::max(1, width);
+    if (mode == 0) { // /
+        return ((x + y) % m) < w;
+    }
+    if (mode == 1) { // backslash diagonal
+        return ((x - y + 1000000) % m) < w;
+    }
+    if (mode == 2) { // horizontal
+        return (y % m) < w;
+    }
+    return (x % m) < w; // vertical
+}
+
+void applyHatchToBuffer(ImageBuffer& image,
+                        int spacing,
+                        int lineWidth,
+                        const PixelRGBA8& ink,
+                        float opacity,
+                        bool preserveHighlights) {
+    const float mixBase = clamp01(opacity);
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const PixelRGBA8 src = image.getPixel(x, y);
+            const float darkness = 1.0f - luma01(src);
+            if (darkness <= 0.05f && preserveHighlights) {
+                continue;
+            }
+
+            bool hit = false;
+            if (darkness > 0.18f) hit |= hatchHit(x, y, spacing, lineWidth, 0);
+            if (darkness > 0.35f) hit |= hatchHit(x, y, spacing + 2, lineWidth, 1);
+            if (darkness > 0.55f) hit |= hatchHit(x, y, spacing + 4, lineWidth, 2);
+            if (darkness > 0.75f) hit |= hatchHit(x, y, spacing + 6, lineWidth, 3);
+            if (!hit) {
+                continue;
+            }
+
+            const float mix = clamp01(mixBase * darkness);
+            PixelRGBA8 target = ink;
+            target.a = src.a;
+            image.setPixel(x, y, lerpPixel(src, target, mix));
+        }
+    }
+}
+
 std::vector<std::size_t> parsePathIndices(const std::string& path) {
     if (path.empty() || path[0] != '/') {
         throw std::runtime_error("Path must start with '/': " + path);
@@ -1508,6 +1643,38 @@ void applyOperation(Document& document, const std::string& opSpec) {
             bLut = buildCurveLut(parseCurvePoints(kv.at("b")));
         }
         applyCurvesToBuffer(target, rgbLut, hasR ? &rLut : nullptr, hasG ? &gLut : nullptr, hasB ? &bLut : nullptr);
+        return;
+    }
+
+    if (action == "fractal-noise") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("fractal-noise requires path=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+        const float scale = kv.find("scale") == kv.end() ? 64.0f : std::stof(kv.at("scale"));
+        const int octaves = kv.find("octaves") == kv.end() ? 5 : std::stoi(kv.at("octaves"));
+        const float lacunarity = kv.find("lacunarity") == kv.end() ? 2.0f : std::stof(kv.at("lacunarity"));
+        const float gain = kv.find("gain") == kv.end() ? 0.5f : std::stof(kv.at("gain"));
+        const float amount = kv.find("amount") == kv.end() ? 0.2f : std::stof(kv.at("amount"));
+        const std::uint32_t seed = kv.find("seed") == kv.end() ? 1337u : static_cast<std::uint32_t>(std::stoul(kv.at("seed")));
+        const bool monochrome = kv.find("monochrome") == kv.end() ? true : parseBoolFlag(kv.at("monochrome"));
+        applyFractalNoiseToBuffer(target, scale, octaves, lacunarity, gain, amount, seed, monochrome);
+        return;
+    }
+
+    if (action == "hatch") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("hatch requires path=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+        const int spacing = kv.find("spacing") == kv.end() ? 8 : std::stoi(kv.at("spacing"));
+        const int lineWidth = kv.find("line_width") == kv.end() ? 1 : std::stoi(kv.at("line_width"));
+        const PixelRGBA8 ink = kv.find("ink") == kv.end() ? PixelRGBA8(28, 28, 28, 255) : parseRGBA(kv.at("ink"), true);
+        const float opacity = kv.find("opacity") == kv.end() ? 0.9f : std::stof(kv.at("opacity"));
+        const bool preserveHighlights = kv.find("preserve_highlights") == kv.end() ? true : parseBoolFlag(kv.at("preserve_highlights"));
+        applyHatchToBuffer(target, spacing, lineWidth, ink, opacity, preserveHighlights);
         return;
     }
 
