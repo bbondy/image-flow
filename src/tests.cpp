@@ -384,6 +384,43 @@ void testDrawablePathStrokeAndFill() {
     require(fillOutside.r == 0 && fillOutside.g == 0 && fillOutside.b == 0, "fillPath should not affect outside pixels");
 }
 
+void testDrawableStrokeStyleControls() {
+    PNGImage thickImg(20, 20, Color(0, 0, 0));
+    Drawable d(thickImg);
+    d.setLineWidth(5);
+    d.beginPath();
+    d.moveTo(2.0f, 10.0f);
+    d.lineTo(17.0f, 10.0f);
+    d.stroke(Color(255, 255, 255));
+    const Color thickCenter = thickImg.getPixel(10, 10);
+    const Color thickOffset = thickImg.getPixel(10, 12);
+    require(thickCenter.r == 255 && thickCenter.g == 255 && thickCenter.b == 255, "stroke lineWidth should color center");
+    require(thickOffset.r == 255 && thickOffset.g == 255 && thickOffset.b == 255, "stroke lineWidth should increase thickness");
+
+    PNGImage roundCapImg(20, 20, Color(0, 0, 0));
+    Drawable rc(roundCapImg);
+    rc.setLineWidth(6);
+    rc.setLineCap(Drawable::LineCap::Round);
+    rc.beginPath();
+    rc.moveTo(6.0f, 10.0f);
+    rc.lineTo(14.0f, 10.0f);
+    rc.stroke(Color(255, 0, 0));
+    const Color beforeStart = roundCapImg.getPixel(4, 10);
+    require(beforeStart.r == 255 && beforeStart.g == 0 && beforeStart.b == 0, "round cap should extend stroke with rounded end");
+
+    PNGImage joinImg(20, 20, Color(0, 0, 0));
+    Drawable j(joinImg);
+    j.setLineWidth(6);
+    j.setLineJoin(Drawable::LineJoin::Round);
+    j.beginPath();
+    j.moveTo(4.0f, 16.0f);
+    j.lineTo(10.0f, 8.0f);
+    j.lineTo(16.0f, 16.0f);
+    j.stroke(Color(0, 255, 0));
+    const Color joinCenter = joinImg.getPixel(10, 8);
+    require(joinCenter.r == 0 && joinCenter.g == 255 && joinCenter.b == 0, "round join should color join pivot");
+}
+
 void testRasterResizeFilters() {
     PNGImage src(2, 2, Color(0, 0, 0));
     src.setPixel(0, 0, Color(0, 0, 0));
@@ -571,6 +608,7 @@ int main() {
         testDrawableEllipseAndFillEllipse();
         testDrawablePolylineAndPolygon();
         testDrawablePathStrokeAndFill();
+        testDrawableStrokeStyleControls();
         testRasterResizeFilters();
         testEffectsOnRasterImage();
         testEffectsOnLayerImageBuffer();

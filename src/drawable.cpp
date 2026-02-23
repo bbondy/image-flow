@@ -104,12 +104,70 @@ void Drawable::closePath() {
     sub.closed = true;
 }
 
+void Drawable::setLineWidth(int width) {
+    m_lineWidth = std::max(1, width);
+}
+
+void Drawable::setLineCap(LineCap cap) {
+    m_lineCap = cap;
+}
+
+void Drawable::setLineJoin(LineJoin join) {
+    m_lineJoin = join;
+}
+
+void Drawable::setMiterLimit(float limit) {
+    m_miterLimit = std::max(1.0f, limit);
+}
+
 void Drawable::strokeSegment(float x0, float y0, float x1, float y1, const Color& color) {
-    line(static_cast<int>(std::lround(x0)),
-         static_cast<int>(std::lround(y0)),
-         static_cast<int>(std::lround(x1)),
-         static_cast<int>(std::lround(y1)),
-         color);
+    if (m_lineWidth <= 1) {
+        line(static_cast<int>(std::lround(x0)),
+             static_cast<int>(std::lround(y0)),
+             static_cast<int>(std::lround(x1)),
+             static_cast<int>(std::lround(y1)),
+             color);
+        return;
+    }
+
+    const float dx = x1 - x0;
+    const float dy = y1 - y0;
+    const float len = std::sqrt(dx * dx + dy * dy);
+    if (len <= 0.0001f) {
+        fillCircle(static_cast<int>(std::lround(x0)), static_cast<int>(std::lround(y0)), m_lineWidth / 2, color);
+        return;
+    }
+
+    const float ux = dx / len;
+    const float uy = dy / len;
+    const float px = -uy;
+    const float py = ux;
+    const float half = static_cast<float>(m_lineWidth - 1) * 0.5f;
+
+    float sx0 = x0;
+    float sy0 = y0;
+    float sx1 = x1;
+    float sy1 = y1;
+    if (m_lineCap == LineCap::Square) {
+        sx0 -= ux * half;
+        sy0 -= uy * half;
+        sx1 += ux * half;
+        sy1 += uy * half;
+    }
+
+    for (int i = 0; i < m_lineWidth; ++i) {
+        const float offset = static_cast<float>(i) - half;
+        line(static_cast<int>(std::lround(sx0 + px * offset)),
+             static_cast<int>(std::lround(sy0 + py * offset)),
+             static_cast<int>(std::lround(sx1 + px * offset)),
+             static_cast<int>(std::lround(sy1 + py * offset)),
+             color);
+    }
+
+    if (m_lineCap == LineCap::Round) {
+        fillCircle(static_cast<int>(std::lround(x0)), static_cast<int>(std::lround(y0)), m_lineWidth / 2, color);
+        fillCircle(static_cast<int>(std::lround(x1)), static_cast<int>(std::lround(y1)), m_lineWidth / 2, color);
+    }
 }
 
 void Drawable::stroke(const Color& color) {
@@ -120,6 +178,23 @@ void Drawable::stroke(const Color& color) {
         for (std::size_t i = 1; i < sub.points.size(); ++i) {
             strokeSegment(sub.points[i - 1].first, sub.points[i - 1].second,
                           sub.points[i].first, sub.points[i].second, color);
+        }
+
+        if (m_lineWidth > 1 && sub.points.size() > 2) {
+            const std::size_t joinEnd = sub.closed ? sub.points.size() - 1 : sub.points.size() - 2;
+            for (std::size_t i = 1; i <= joinEnd; ++i) {
+                const auto& p = sub.points[i];
+                const int jx = static_cast<int>(std::lround(p.first));
+                const int jy = static_cast<int>(std::lround(p.second));
+                if (m_lineJoin == LineJoin::Round) {
+                    fillCircle(jx, jy, m_lineWidth / 2, color);
+                } else if (m_lineJoin == LineJoin::Bevel) {
+                    const int side = std::max(1, m_lineWidth / 2);
+                    fillRect(jx - side, jy - side, side * 2 + 1, side * 2 + 1, color);
+                } else {
+                    (void)m_miterLimit;
+                }
+            }
         }
     }
 }

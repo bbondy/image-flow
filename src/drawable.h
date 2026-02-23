@@ -31,6 +31,10 @@ public:
     void moveTo(float x, float y);
     void lineTo(float x, float y);
     void closePath();
+    void setLineWidth(int width);
+    void setLineCap(LineCap cap);
+    void setLineJoin(LineJoin join);
+    void setMiterLimit(float limit);
     void stroke(const Color& color);
     void fillPath(const Color& color);
     void rect(int x, int y, int width, int height, const Color& color);
@@ -52,6 +56,10 @@ private:
 
     Image& m_image;
     std::vector<SubPath> m_path;
+    int m_lineWidth = 1;
+    LineCap m_lineCap = LineCap::Butt;
+    LineJoin m_lineJoin = LineJoin::Miter;
+    float m_miterLimit = 10.0f;
 
     void plotCircleOctants(int cx, int cy, int x, int y, const Color& color);
     void strokeSegment(float x0, float y0, float x1, float y1, const Color& color);
