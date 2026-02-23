@@ -1,5 +1,18 @@
 CXX := c++
-CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -O2
+DEBUG ?= 0
+SANITIZE ?= 0
+BASE_CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic
+OPT_CXXFLAGS := -O2
+SAN_FLAGS :=
+ifeq ($(DEBUG),1)
+OPT_CXXFLAGS := -O0 -g3
+endif
+ifeq ($(SANITIZE),1)
+SAN_FLAGS := -fsanitize=address,undefined -fno-omit-frame-pointer
+endif
+CXXFLAGS := $(BASE_CXXFLAGS) $(OPT_CXXFLAGS) $(SAN_FLAGS)
+LDFLAGS += $(SAN_FLAGS)
+DEPFLAGS := -MMD -MP
 ARCH := $(shell uname -m)
 
 BIN_DIR := build/bin
@@ -15,23 +28,24 @@ CLI_SRCS := src/cli_args.cpp src/cli_parse.cpp src/cli_help.cpp src/cli_shared.c
 OBJS := $(patsubst %.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS) $(CLI_SRCS))
 SAMPLES_OBJS := $(patsubst %.cpp,$(OBJ_DIR)/%.o,$(SAMPLES_SRCS))
 TEST_OBJS := $(patsubst %.cpp,$(OBJ_DIR)/%.o,$(TEST_SRCS) $(CLI_SRCS))
+DEPS := $(OBJS:.o=.d) $(SAMPLES_OBJS:.o=.d) $(TEST_OBJS:.o=.d)
 
 all: $(TARGET) $(SAMPLES_TARGET)
 
 $(TARGET): $(OBJS)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -Isrc -o $@ $(OBJS)
+	$(CXX) $(CXXFLAGS) -Isrc $(LDFLAGS) -o $@ $(OBJS)
 
 $(SAMPLES_TARGET): $(SAMPLES_OBJS)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -Isrc -o $@ $(SAMPLES_OBJS)
+	$(CXX) $(CXXFLAGS) -Isrc $(LDFLAGS) -o $@ $(SAMPLES_OBJS)
 
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
 
 $(TEST_TARGET): $(TEST_OBJS)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -Isrc -o $@ $(TEST_OBJS)
+	$(CXX) $(CXXFLAGS) -Isrc $(LDFLAGS) -o $@ $(TEST_OBJS)
 
 run: run-sample
 
@@ -43,9 +57,17 @@ run-scripts: $(TARGET)
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -Isrc -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -Isrc -c $< -o $@
+
+debug-test:
+	$(MAKE) DEBUG=1 test
+
+asan-test:
+	$(MAKE) DEBUG=1 SANITIZE=1 test
 
 clean:
 	rm -rf build $(TARGET) $(SAMPLES_TARGET) $(TEST_TARGET)
 
-.PHONY: all clean test run run-sample run-scripts
+.PHONY: all clean test run run-sample run-scripts debug-test asan-test
+
+-include $(DEPS)
