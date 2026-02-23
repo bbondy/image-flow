@@ -37,6 +37,9 @@ run: run-sample
 run-sample: $(TARGET)
 	./$(TARGET)
 
+run-scripts: $(TARGET)
+	./sample_scripts/run_all.sh
+
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -Isrc -c $< -o $@
@@ -44,4 +47,4 @@ $(OBJ_DIR)/%.o: %.cpp
 clean:
 	rm -rf build $(TARGET) $(SAMPLES_TARGET) $(TEST_TARGET)
 
-.PHONY: all clean test run run-sample
+.PHONY: all clean test run run-sample run-scripts
