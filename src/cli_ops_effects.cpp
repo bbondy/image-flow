@@ -1,4 +1,5 @@
 #include "cli_ops_effects.h"
+#include "cli_ops_resolve.h"
 
 #include "cli_parse.h"
 #include "cli_shared.h"
@@ -780,9 +781,7 @@ void applyPencilStrokesToBuffer(ImageBuffer& image,
 bool tryApplyLambdaDispatchedOperation(
     const std::string& action,
     Document& document,
-    const std::unordered_map<std::string, std::string>& kv,
-    const std::function<Layer&(Document&, const std::string&)>& resolveLayerPath,
-    const std::function<ImageBuffer&(Layer&, const std::unordered_map<std::string, std::string>&)>& resolveDrawTargetBuffer) {
+    const std::unordered_map<std::string, std::string>& kv) {
     using OpHandler = std::function<void()>;
     const std::unordered_map<std::string, OpHandler> dispatch = {
         {"apply-effect", [&]() {
@@ -995,8 +994,6 @@ bool tryApplyLambdaDispatchedOperation(
 bool tryApplyEffectsOperation(
     const std::string& action,
     Document& document,
-    const std::unordered_map<std::string, std::string>& kv,
-    const std::function<Layer&(Document&, const std::string&)>& resolveLayerPath,
-    const std::function<ImageBuffer&(Layer&, const std::unordered_map<std::string, std::string>&)>& resolveDrawTargetBuffer) {
-    return tryApplyLambdaDispatchedOperation(action, document, kv, resolveLayerPath, resolveDrawTargetBuffer);
+    const std::unordered_map<std::string, std::string>& kv) {
+    return tryApplyLambdaDispatchedOperation(action, document, kv);
 }

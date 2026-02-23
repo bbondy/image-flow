@@ -1,4 +1,5 @@
 #include "cli_ops_draw.h"
+#include "cli_ops_resolve.h"
 
 #include "cli_parse.h"
 #include "drawable.h"
@@ -46,9 +47,7 @@ private:
 bool tryApplyDrawOperation(
     const std::string& action,
     Document& document,
-    const std::unordered_map<std::string, std::string>& kv,
-    const std::function<Layer&(Document&, const std::string&)>& resolveLayerPath,
-    const std::function<ImageBuffer&(Layer&, const std::unordered_map<std::string, std::string>&)>& resolveDrawTargetBuffer) {
+    const std::unordered_map<std::string, std::string>& kv) {
     if (action == "draw-fill") {
         if (kv.find("path") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("draw-fill requires path= and rgba=");
