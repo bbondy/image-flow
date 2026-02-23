@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BIN="$ROOT_DIR/build/bin/image_flow"
 INPUT_IMAGE="${1:-$ROOT_DIR/samples/smiley.png}"
 VARIATION_COUNT="${2:-20}"
+COPIES_PER_VARIATION="${3:-6}"
 OUT_DIR="$ROOT_DIR/build/output/images"
 INPUT_NAME="$(basename "$INPUT_IMAGE")"
 INPUT_STEM="${INPUT_NAME%.*}"
@@ -15,8 +16,6 @@ WIDTH=900
 HEIGHT=900
 CX=450
 CY=450
-COPIES_PER_VARIATION=6
-
 if [[ ! -f "$INPUT_IMAGE" ]]; then
   echo "Missing input image: $INPUT_IMAGE" >&2
   exit 1
@@ -24,6 +23,11 @@ fi
 
 if ! [[ "$VARIATION_COUNT" =~ ^[0-9]+$ ]] || [[ "$VARIATION_COUNT" -lt 1 ]]; then
   echo "Variation count must be a positive integer, got: $VARIATION_COUNT" >&2
+  exit 1
+fi
+
+if ! [[ "$COPIES_PER_VARIATION" =~ ^[0-9]+$ ]] || [[ "$COPIES_PER_VARIATION" -lt 1 ]]; then
+  echo "Copies per variation must be a positive integer, got: $COPIES_PER_VARIATION" >&2
   exit 1
 fi
 
