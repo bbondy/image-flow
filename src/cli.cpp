@@ -20,6 +20,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <random>
 #include <sstream>
@@ -1066,6 +1067,97 @@ void applyHatchToBuffer(ImageBuffer& image,
     }
 }
 
+void blendPixelOver(ImageBuffer& image, int x, int y, const PixelRGBA8& color, float alpha) {
+    if (!image.inBounds(x, y) || alpha <= 0.0f) {
+        return;
+    }
+    const float a = clamp01(alpha);
+    const PixelRGBA8 dst = image.getPixel(x, y);
+    image.setPixel(x, y, lerpPixel(dst, PixelRGBA8(color.r, color.g, color.b, dst.a), a));
+}
+
+void drawSoftLine(ImageBuffer& image,
+                  int x0,
+                  int y0,
+                  int x1,
+                  int y1,
+                  const PixelRGBA8& ink,
+                  float opacity,
+                  int thickness) {
+    const int dx = std::abs(x1 - x0);
+    const int dy = std::abs(y1 - y0);
+    const int steps = std::max(1, std::max(dx, dy));
+    const float invSteps = 1.0f / static_cast<float>(steps);
+    const int radius = std::max(0, thickness / 2);
+
+    for (int i = 0; i <= steps; ++i) {
+        const float t = static_cast<float>(i) * invSteps;
+        const int x = static_cast<int>(std::lround(static_cast<float>(x0) + (static_cast<float>(x1 - x0) * t)));
+        const int y = static_cast<int>(std::lround(static_cast<float>(y0) + (static_cast<float>(y1 - y0) * t)));
+
+        for (int oy = -radius; oy <= radius; ++oy) {
+            for (int ox = -radius; ox <= radius; ++ox) {
+                const float d2 = static_cast<float>(ox * ox + oy * oy);
+                const float falloff = radius == 0 ? 1.0f : std::max(0.0f, 1.0f - (d2 / static_cast<float>((radius + 1) * (radius + 1))));
+                blendPixelOver(image, x + ox, y + oy, ink, opacity * falloff);
+            }
+        }
+    }
+}
+
+void applyPencilStrokesToBuffer(ImageBuffer& image,
+                                int spacing,
+                                int length,
+                                int thickness,
+                                double angleDegrees,
+                                double angleJitterDegrees,
+                                int positionJitter,
+                                const PixelRGBA8& ink,
+                                float opacity,
+                                float minDarkness,
+                                std::uint32_t seed) {
+    const int step = std::max(1, spacing);
+    const int strokeLength = std::max(1, length);
+    const int jitter = std::max(0, positionJitter);
+    const float minDark = clamp01(minDarkness);
+
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+    std::uniform_real_distribution<float> angleJitter(-static_cast<float>(angleJitterDegrees),
+                                                      static_cast<float>(angleJitterDegrees));
+    std::uniform_int_distribution<int> posJitter(-jitter, jitter);
+
+    const double baseRad = angleDegrees * 3.14159265358979323846 / 180.0;
+    for (int y = 0; y < image.height(); y += step) {
+        for (int x = 0; x < image.width(); x += step) {
+            const int sx = x + posJitter(rng);
+            const int sy = y + posJitter(rng);
+            if (!image.inBounds(sx, sy)) {
+                continue;
+            }
+
+            const float darkness = 1.0f - luma01(image.getPixel(sx, sy));
+            if (darkness < minDark) {
+                continue;
+            }
+
+            const float spawnChance = clamp01((darkness - minDark) / std::max(0.0001f, 1.0f - minDark));
+            if (unit(rng) > spawnChance) {
+                continue;
+            }
+
+            const double theta = baseRad + (static_cast<double>(angleJitter(rng)) * 3.14159265358979323846 / 180.0);
+            const double half = static_cast<double>(strokeLength) * 0.5;
+            const int x0 = static_cast<int>(std::lround(static_cast<double>(sx) - std::cos(theta) * half));
+            const int y0 = static_cast<int>(std::lround(static_cast<double>(sy) - std::sin(theta) * half));
+            const int x1 = static_cast<int>(std::lround(static_cast<double>(sx) + std::cos(theta) * half));
+            const int y1 = static_cast<int>(std::lround(static_cast<double>(sy) + std::sin(theta) * half));
+            const float strokeOpacity = clamp01(opacity * (0.45f + darkness * 0.9f));
+            drawSoftLine(image, x0, y0, x1, y1, ink, strokeOpacity, thickness);
+        }
+    }
+}
+
 std::vector<std::size_t> parsePathIndices(const std::string& path) {
     if (path.empty() || path[0] != '/') {
         throw std::runtime_error("Path must start with '/': " + path);
@@ -1368,6 +1460,211 @@ void applyOperation(Document& document, const std::string& opSpec) {
     const std::string action = tokens[0];
     const std::unordered_map<std::string, std::string> kv = parseKeyValues(tokens, 1);
 
+    using OpHandler = std::function<void()>;
+    const std::unordered_map<std::string, OpHandler> dispatch = {
+        {"apply-effect", [&]() {
+             if (kv.find("path") == kv.end() || kv.find("effect") == kv.end()) {
+                 throw std::runtime_error("apply-effect requires path= and effect=");
+             }
+             Layer& layer = resolveLayerPath(document, kv.at("path"));
+             const std::string effect = toLower(kv.at("effect"));
+             if (effect == "grayscale") {
+                 applyGrayscale(layer);
+                 return;
+             }
+             if (effect == "sepia") {
+                 const float strength = kv.find("strength") == kv.end() ? 1.0f : std::stof(kv.at("strength"));
+                 applySepia(layer, strength);
+                 return;
+             }
+             if (effect == "invert") {
+                 const bool preserveAlpha = kv.find("preserve_alpha") == kv.end() ? true : parseBoolFlag(kv.at("preserve_alpha"));
+                 applyInvertToLayer(layer, preserveAlpha);
+                 return;
+             }
+             if (effect == "threshold") {
+                 const int threshold = kv.find("threshold") == kv.end() ? 128 : std::stoi(kv.at("threshold"));
+                 const PixelRGBA8 lo = kv.find("lo") == kv.end() ? PixelRGBA8(0, 0, 0, 255) : parseRGBA(kv.at("lo"), true);
+                 const PixelRGBA8 hi = kv.find("hi") == kv.end() ? PixelRGBA8(255, 255, 255, 255) : parseRGBA(kv.at("hi"), true);
+                 applyThresholdToLayer(layer, threshold, lo, hi);
+                 return;
+             }
+             throw std::runtime_error("Unsupported effect: " + effect);
+         }},
+        {"gaussian-blur", [&]() {
+             if (kv.find("path") == kv.end()) {
+                 throw std::runtime_error("gaussian-blur requires path=");
+             }
+             Layer& layer = resolveLayerPath(document, kv.at("path"));
+             ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+             const int radius = kv.find("radius") == kv.end() ? 3 : std::stoi(kv.at("radius"));
+             const double sigma = kv.find("sigma") == kv.end() ? 0.0 : std::stod(kv.at("sigma"));
+             applyGaussianBlurToBuffer(target, radius, sigma);
+         }},
+        {"edge-detect", [&]() {
+             if (kv.find("path") == kv.end()) {
+                 throw std::runtime_error("edge-detect requires path=");
+             }
+             Layer& layer = resolveLayerPath(document, kv.at("path"));
+             ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+             const std::string method = kv.find("method") == kv.end() ? "sobel" : toLower(kv.at("method"));
+             const bool keepAlpha = kv.find("keep_alpha") == kv.end() ? true : parseBoolFlag(kv.at("keep_alpha"));
+             if (method == "sobel") {
+                 applySobelToBuffer(target, keepAlpha);
+                 return;
+             }
+             if (method == "canny") {
+                 const int low = kv.find("low") == kv.end() ? 40 : std::stoi(kv.at("low"));
+                 const int high = kv.find("high") == kv.end() ? 90 : std::stoi(kv.at("high"));
+                 applyCannyToBuffer(target, low, high, keepAlpha);
+                 return;
+             }
+             throw std::runtime_error("edge-detect method must be sobel or canny");
+         }},
+        {"morphology", [&]() {
+             if (kv.find("path") == kv.end()) {
+                 throw std::runtime_error("morphology requires path=");
+             }
+             Layer& layer = resolveLayerPath(document, kv.at("path"));
+             ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+             const std::string op = kv.find("op") == kv.end() ? "dilate" : toLower(kv.at("op"));
+             const int radius = kv.find("radius") == kv.end() ? 1 : std::stoi(kv.at("radius"));
+             const int iterations = kv.find("iterations") == kv.end() ? 1 : std::stoi(kv.at("iterations"));
+             applyMorphologyToBuffer(target, op, radius, iterations);
+         }},
+        {"gamma", [&]() {
+             if (kv.find("path") == kv.end()) {
+                 throw std::runtime_error("gamma requires path=");
+             }
+             Layer& layer = resolveLayerPath(document, kv.at("path"));
+             ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+             const double gamma = kv.find("value") == kv.end() ? (kv.find("gamma") == kv.end() ? 1.0 : std::stod(kv.at("gamma"))) : std::stod(kv.at("value"));
+             applyGammaToBuffer(target, gamma);
+         }},
+        {"levels", [&]() {
+             if (kv.find("path") == kv.end()) {
+                 throw std::runtime_error("levels requires path=");
+             }
+             Layer& layer = resolveLayerPath(document, kv.at("path"));
+             ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+             const int inBlack = kv.find("in_black") == kv.end() ? 0 : std::stoi(kv.at("in_black"));
+             const int inWhite = kv.find("in_white") == kv.end() ? 255 : std::stoi(kv.at("in_white"));
+             const double midGamma = kv.find("gamma") == kv.end() ? 1.0 : std::stod(kv.at("gamma"));
+             const int outBlack = kv.find("out_black") == kv.end() ? 0 : std::stoi(kv.at("out_black"));
+             const int outWhite = kv.find("out_white") == kv.end() ? 255 : std::stoi(kv.at("out_white"));
+             applyLevelsToBuffer(target, inBlack, inWhite, midGamma, outBlack, outWhite);
+         }},
+        {"curves", [&]() {
+             if (kv.find("path") == kv.end()) {
+                 throw std::runtime_error("curves requires path=");
+             }
+             Layer& layer = resolveLayerPath(document, kv.at("path"));
+             ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+             const std::vector<std::pair<int, int>> rgbPoints = kv.find("rgb") == kv.end()
+                                                                     ? std::vector<std::pair<int, int>>{{0, 0}, {255, 255}}
+                                                                     : parseCurvePoints(kv.at("rgb"));
+             const std::array<std::uint8_t, 256> rgbLut = buildCurveLut(rgbPoints);
+             std::array<std::uint8_t, 256> rLut{};
+             std::array<std::uint8_t, 256> gLut{};
+             std::array<std::uint8_t, 256> bLut{};
+             const bool hasR = kv.find("r") != kv.end();
+             const bool hasG = kv.find("g") != kv.end();
+             const bool hasB = kv.find("b") != kv.end();
+             if (hasR) {
+                 rLut = buildCurveLut(parseCurvePoints(kv.at("r")));
+             }
+             if (hasG) {
+                 gLut = buildCurveLut(parseCurvePoints(kv.at("g")));
+             }
+             if (hasB) {
+                 bLut = buildCurveLut(parseCurvePoints(kv.at("b")));
+             }
+             applyCurvesToBuffer(target, rgbLut, hasR ? &rLut : nullptr, hasG ? &gLut : nullptr, hasB ? &bLut : nullptr);
+         }},
+        {"fractal-noise", [&]() {
+             if (kv.find("path") == kv.end()) {
+                 throw std::runtime_error("fractal-noise requires path=");
+             }
+             Layer& layer = resolveLayerPath(document, kv.at("path"));
+             ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+             const float scale = kv.find("scale") == kv.end() ? 64.0f : std::stof(kv.at("scale"));
+             const int octaves = kv.find("octaves") == kv.end() ? 5 : std::stoi(kv.at("octaves"));
+             const float lacunarity = kv.find("lacunarity") == kv.end() ? 2.0f : std::stof(kv.at("lacunarity"));
+             const float gain = kv.find("gain") == kv.end() ? 0.5f : std::stof(kv.at("gain"));
+             const float amount = kv.find("amount") == kv.end() ? 0.2f : std::stof(kv.at("amount"));
+             const std::uint32_t seed = kv.find("seed") == kv.end() ? 1337u : static_cast<std::uint32_t>(std::stoul(kv.at("seed")));
+             const bool monochrome = kv.find("monochrome") == kv.end() ? true : parseBoolFlag(kv.at("monochrome"));
+             applyFractalNoiseToBuffer(target, scale, octaves, lacunarity, gain, amount, seed, monochrome);
+         }},
+        {"hatch", [&]() {
+             if (kv.find("path") == kv.end()) {
+                 throw std::runtime_error("hatch requires path=");
+             }
+             Layer& layer = resolveLayerPath(document, kv.at("path"));
+             ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+             const int spacing = kv.find("spacing") == kv.end() ? 8 : std::stoi(kv.at("spacing"));
+             const int lineWidth = kv.find("line_width") == kv.end() ? 1 : std::stoi(kv.at("line_width"));
+             const PixelRGBA8 ink = kv.find("ink") == kv.end() ? PixelRGBA8(28, 28, 28, 255) : parseRGBA(kv.at("ink"), true);
+             const float opacity = kv.find("opacity") == kv.end() ? 0.9f : std::stof(kv.at("opacity"));
+             const bool preserveHighlights = kv.find("preserve_highlights") == kv.end() ? true : parseBoolFlag(kv.at("preserve_highlights"));
+             applyHatchToBuffer(target, spacing, lineWidth, ink, opacity, preserveHighlights);
+         }},
+        {"pencil-strokes", [&]() {
+             if (kv.find("path") == kv.end()) {
+                 throw std::runtime_error("pencil-strokes requires path=");
+             }
+             Layer& layer = resolveLayerPath(document, kv.at("path"));
+             ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+             const int spacing = kv.find("spacing") == kv.end() ? 8 : std::stoi(kv.at("spacing"));
+             const int length = kv.find("length") == kv.end() ? 14 : std::stoi(kv.at("length"));
+             const int thickness = kv.find("thickness") == kv.end() ? 1 : std::stoi(kv.at("thickness"));
+             const double angle = kv.find("angle") == kv.end() ? 28.0 : std::stod(kv.at("angle"));
+             const double angleJitter = kv.find("angle_jitter") == kv.end() ? 26.0 : std::stod(kv.at("angle_jitter"));
+             const int jitter = kv.find("jitter") == kv.end() ? 2 : std::stoi(kv.at("jitter"));
+             const PixelRGBA8 ink = kv.find("ink") == kv.end() ? PixelRGBA8(26, 26, 26, 255) : parseRGBA(kv.at("ink"), true);
+             const float opacity = kv.find("opacity") == kv.end() ? 0.22f : std::stof(kv.at("opacity"));
+             const float minDarkness = kv.find("min_darkness") == kv.end() ? 0.15f : std::stof(kv.at("min_darkness"));
+             const std::uint32_t seed = kv.find("seed") == kv.end() ? 1337u : static_cast<std::uint32_t>(std::stoul(kv.at("seed")));
+             applyPencilStrokesToBuffer(target, spacing, length, thickness, angle, angleJitter, jitter, ink, opacity, minDarkness, seed);
+         }},
+        {"replace-color", [&]() {
+             if (kv.find("path") == kv.end() || kv.find("from") == kv.end() || kv.find("to") == kv.end()) {
+                 throw std::runtime_error("replace-color requires path= from= to=");
+             }
+             Layer& layer = resolveLayerPath(document, kv.at("path"));
+             const PixelRGBA8 fromColor = parseRGBA(kv.at("from"), true);
+             const PixelRGBA8 toColor = parseRGBA(kv.at("to"), true);
+             const double tolerance = kv.find("tolerance") == kv.end() ? 36.0 : std::stod(kv.at("tolerance"));
+             const double softness = kv.find("softness") == kv.end() ? 24.0 : std::stod(kv.at("softness"));
+             const bool preserveLuma = kv.find("preserve_luma") == kv.end() ? true : parseBoolFlag(kv.at("preserve_luma"));
+             applyReplaceColorToLayer(layer, fromColor, toColor, tolerance, softness, preserveLuma);
+         }},
+        {"channel-mix", [&]() {
+             if (kv.find("path") == kv.end()) {
+                 throw std::runtime_error("channel-mix requires path=");
+             }
+             Layer& layer = resolveLayerPath(document, kv.at("path"));
+             const std::array<float, 9> matrix = {
+                 kv.find("rr") == kv.end() ? 1.0f : std::stof(kv.at("rr")),
+                 kv.find("rg") == kv.end() ? 0.0f : std::stof(kv.at("rg")),
+                 kv.find("rb") == kv.end() ? 0.0f : std::stof(kv.at("rb")),
+                 kv.find("gr") == kv.end() ? 0.0f : std::stof(kv.at("gr")),
+                 kv.find("gg") == kv.end() ? 1.0f : std::stof(kv.at("gg")),
+                 kv.find("gb") == kv.end() ? 0.0f : std::stof(kv.at("gb")),
+                 kv.find("br") == kv.end() ? 0.0f : std::stof(kv.at("br")),
+                 kv.find("bg") == kv.end() ? 0.0f : std::stof(kv.at("bg")),
+                 kv.find("bb") == kv.end() ? 1.0f : std::stof(kv.at("bb"))};
+             const float clampMin = kv.find("min") == kv.end() ? 0.0f : std::stof(kv.at("min"));
+             const float clampMax = kv.find("max") == kv.end() ? 255.0f : std::stof(kv.at("max"));
+             applyChannelMixToLayer(layer, matrix, clampMin, clampMax);
+         }},
+    };
+    const auto dispatchIt = dispatch.find(action);
+    if (dispatchIt != dispatch.end()) {
+        dispatchIt->second();
+        return;
+    }
+
     if (action == "add-layer") {
         const auto parentIt = kv.find("parent");
         const std::string parentPath = parentIt == kv.end() ? "/" : parentIt->second;
@@ -1528,204 +1825,6 @@ void applyOperation(Document& document, const std::string& opSpec) {
         } else {
             node.asGroup().transform().setIdentity();
         }
-        return;
-    }
-
-    if (action == "apply-effect") {
-        if (kv.find("path") == kv.end() || kv.find("effect") == kv.end()) {
-            throw std::runtime_error("apply-effect requires path= and effect=");
-        }
-        Layer& layer = resolveLayerPath(document, kv.at("path"));
-        const std::string effect = toLower(kv.at("effect"));
-        if (effect == "grayscale") {
-            applyGrayscale(layer);
-            return;
-        }
-        if (effect == "sepia") {
-            const float strength = kv.find("strength") == kv.end() ? 1.0f : std::stof(kv.at("strength"));
-            applySepia(layer, strength);
-            return;
-        }
-        if (effect == "invert") {
-            const bool preserveAlpha = kv.find("preserve_alpha") == kv.end() ? true : parseBoolFlag(kv.at("preserve_alpha"));
-            applyInvertToLayer(layer, preserveAlpha);
-            return;
-        }
-        if (effect == "threshold") {
-            const int threshold = kv.find("threshold") == kv.end() ? 128 : std::stoi(kv.at("threshold"));
-            const PixelRGBA8 lo = kv.find("lo") == kv.end() ? PixelRGBA8(0, 0, 0, 255) : parseRGBA(kv.at("lo"), true);
-            const PixelRGBA8 hi = kv.find("hi") == kv.end() ? PixelRGBA8(255, 255, 255, 255) : parseRGBA(kv.at("hi"), true);
-            applyThresholdToLayer(layer, threshold, lo, hi);
-            return;
-        }
-        throw std::runtime_error("Unsupported effect: " + effect);
-    }
-
-    if (action == "gaussian-blur") {
-        if (kv.find("path") == kv.end()) {
-            throw std::runtime_error("gaussian-blur requires path=");
-        }
-        Layer& layer = resolveLayerPath(document, kv.at("path"));
-        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
-        const int radius = kv.find("radius") == kv.end() ? 3 : std::stoi(kv.at("radius"));
-        const double sigma = kv.find("sigma") == kv.end() ? 0.0 : std::stod(kv.at("sigma"));
-        applyGaussianBlurToBuffer(target, radius, sigma);
-        return;
-    }
-
-    if (action == "edge-detect") {
-        if (kv.find("path") == kv.end()) {
-            throw std::runtime_error("edge-detect requires path=");
-        }
-        Layer& layer = resolveLayerPath(document, kv.at("path"));
-        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
-        const std::string method = kv.find("method") == kv.end() ? "sobel" : toLower(kv.at("method"));
-        const bool keepAlpha = kv.find("keep_alpha") == kv.end() ? true : parseBoolFlag(kv.at("keep_alpha"));
-        if (method == "sobel") {
-            applySobelToBuffer(target, keepAlpha);
-            return;
-        }
-        if (method == "canny") {
-            const int low = kv.find("low") == kv.end() ? 40 : std::stoi(kv.at("low"));
-            const int high = kv.find("high") == kv.end() ? 90 : std::stoi(kv.at("high"));
-            applyCannyToBuffer(target, low, high, keepAlpha);
-            return;
-        }
-        throw std::runtime_error("edge-detect method must be sobel or canny");
-    }
-
-    if (action == "morphology") {
-        if (kv.find("path") == kv.end()) {
-            throw std::runtime_error("morphology requires path=");
-        }
-        Layer& layer = resolveLayerPath(document, kv.at("path"));
-        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
-        const std::string op = kv.find("op") == kv.end() ? "dilate" : toLower(kv.at("op"));
-        const int radius = kv.find("radius") == kv.end() ? 1 : std::stoi(kv.at("radius"));
-        const int iterations = kv.find("iterations") == kv.end() ? 1 : std::stoi(kv.at("iterations"));
-        applyMorphologyToBuffer(target, op, radius, iterations);
-        return;
-    }
-
-    if (action == "gamma") {
-        if (kv.find("path") == kv.end()) {
-            throw std::runtime_error("gamma requires path=");
-        }
-        Layer& layer = resolveLayerPath(document, kv.at("path"));
-        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
-        const double gamma = kv.find("value") == kv.end() ? (kv.find("gamma") == kv.end() ? 1.0 : std::stod(kv.at("gamma"))) : std::stod(kv.at("value"));
-        applyGammaToBuffer(target, gamma);
-        return;
-    }
-
-    if (action == "levels") {
-        if (kv.find("path") == kv.end()) {
-            throw std::runtime_error("levels requires path=");
-        }
-        Layer& layer = resolveLayerPath(document, kv.at("path"));
-        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
-        const int inBlack = kv.find("in_black") == kv.end() ? 0 : std::stoi(kv.at("in_black"));
-        const int inWhite = kv.find("in_white") == kv.end() ? 255 : std::stoi(kv.at("in_white"));
-        const double midGamma = kv.find("gamma") == kv.end() ? 1.0 : std::stod(kv.at("gamma"));
-        const int outBlack = kv.find("out_black") == kv.end() ? 0 : std::stoi(kv.at("out_black"));
-        const int outWhite = kv.find("out_white") == kv.end() ? 255 : std::stoi(kv.at("out_white"));
-        applyLevelsToBuffer(target, inBlack, inWhite, midGamma, outBlack, outWhite);
-        return;
-    }
-
-    if (action == "curves") {
-        if (kv.find("path") == kv.end()) {
-            throw std::runtime_error("curves requires path=");
-        }
-        Layer& layer = resolveLayerPath(document, kv.at("path"));
-        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
-        const std::vector<std::pair<int, int>> rgbPoints = kv.find("rgb") == kv.end()
-                                                                ? std::vector<std::pair<int, int>>{{0, 0}, {255, 255}}
-                                                                : parseCurvePoints(kv.at("rgb"));
-        const std::array<std::uint8_t, 256> rgbLut = buildCurveLut(rgbPoints);
-        std::array<std::uint8_t, 256> rLut{};
-        std::array<std::uint8_t, 256> gLut{};
-        std::array<std::uint8_t, 256> bLut{};
-        const bool hasR = kv.find("r") != kv.end();
-        const bool hasG = kv.find("g") != kv.end();
-        const bool hasB = kv.find("b") != kv.end();
-        if (hasR) {
-            rLut = buildCurveLut(parseCurvePoints(kv.at("r")));
-        }
-        if (hasG) {
-            gLut = buildCurveLut(parseCurvePoints(kv.at("g")));
-        }
-        if (hasB) {
-            bLut = buildCurveLut(parseCurvePoints(kv.at("b")));
-        }
-        applyCurvesToBuffer(target, rgbLut, hasR ? &rLut : nullptr, hasG ? &gLut : nullptr, hasB ? &bLut : nullptr);
-        return;
-    }
-
-    if (action == "fractal-noise") {
-        if (kv.find("path") == kv.end()) {
-            throw std::runtime_error("fractal-noise requires path=");
-        }
-        Layer& layer = resolveLayerPath(document, kv.at("path"));
-        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
-        const float scale = kv.find("scale") == kv.end() ? 64.0f : std::stof(kv.at("scale"));
-        const int octaves = kv.find("octaves") == kv.end() ? 5 : std::stoi(kv.at("octaves"));
-        const float lacunarity = kv.find("lacunarity") == kv.end() ? 2.0f : std::stof(kv.at("lacunarity"));
-        const float gain = kv.find("gain") == kv.end() ? 0.5f : std::stof(kv.at("gain"));
-        const float amount = kv.find("amount") == kv.end() ? 0.2f : std::stof(kv.at("amount"));
-        const std::uint32_t seed = kv.find("seed") == kv.end() ? 1337u : static_cast<std::uint32_t>(std::stoul(kv.at("seed")));
-        const bool monochrome = kv.find("monochrome") == kv.end() ? true : parseBoolFlag(kv.at("monochrome"));
-        applyFractalNoiseToBuffer(target, scale, octaves, lacunarity, gain, amount, seed, monochrome);
-        return;
-    }
-
-    if (action == "hatch") {
-        if (kv.find("path") == kv.end()) {
-            throw std::runtime_error("hatch requires path=");
-        }
-        Layer& layer = resolveLayerPath(document, kv.at("path"));
-        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
-        const int spacing = kv.find("spacing") == kv.end() ? 8 : std::stoi(kv.at("spacing"));
-        const int lineWidth = kv.find("line_width") == kv.end() ? 1 : std::stoi(kv.at("line_width"));
-        const PixelRGBA8 ink = kv.find("ink") == kv.end() ? PixelRGBA8(28, 28, 28, 255) : parseRGBA(kv.at("ink"), true);
-        const float opacity = kv.find("opacity") == kv.end() ? 0.9f : std::stof(kv.at("opacity"));
-        const bool preserveHighlights = kv.find("preserve_highlights") == kv.end() ? true : parseBoolFlag(kv.at("preserve_highlights"));
-        applyHatchToBuffer(target, spacing, lineWidth, ink, opacity, preserveHighlights);
-        return;
-    }
-
-    if (action == "replace-color") {
-        if (kv.find("path") == kv.end() || kv.find("from") == kv.end() || kv.find("to") == kv.end()) {
-            throw std::runtime_error("replace-color requires path= from= to=");
-        }
-        Layer& layer = resolveLayerPath(document, kv.at("path"));
-        const PixelRGBA8 fromColor = parseRGBA(kv.at("from"), true);
-        const PixelRGBA8 toColor = parseRGBA(kv.at("to"), true);
-        const double tolerance = kv.find("tolerance") == kv.end() ? 36.0 : std::stod(kv.at("tolerance"));
-        const double softness = kv.find("softness") == kv.end() ? 24.0 : std::stod(kv.at("softness"));
-        const bool preserveLuma = kv.find("preserve_luma") == kv.end() ? true : parseBoolFlag(kv.at("preserve_luma"));
-        applyReplaceColorToLayer(layer, fromColor, toColor, tolerance, softness, preserveLuma);
-        return;
-    }
-
-    if (action == "channel-mix") {
-        if (kv.find("path") == kv.end()) {
-            throw std::runtime_error("channel-mix requires path=");
-        }
-        Layer& layer = resolveLayerPath(document, kv.at("path"));
-        const std::array<float, 9> matrix = {
-            kv.find("rr") == kv.end() ? 1.0f : std::stof(kv.at("rr")),
-            kv.find("rg") == kv.end() ? 0.0f : std::stof(kv.at("rg")),
-            kv.find("rb") == kv.end() ? 0.0f : std::stof(kv.at("rb")),
-            kv.find("gr") == kv.end() ? 0.0f : std::stof(kv.at("gr")),
-            kv.find("gg") == kv.end() ? 1.0f : std::stof(kv.at("gg")),
-            kv.find("gb") == kv.end() ? 0.0f : std::stof(kv.at("gb")),
-            kv.find("br") == kv.end() ? 0.0f : std::stof(kv.at("br")),
-            kv.find("bg") == kv.end() ? 0.0f : std::stof(kv.at("bg")),
-            kv.find("bb") == kv.end() ? 1.0f : std::stof(kv.at("bb"))};
-        const float clampMin = kv.find("min") == kv.end() ? 0.0f : std::stof(kv.at("min"));
-        const float clampMax = kv.find("max") == kv.end() ? 255.0f : std::stof(kv.at("max"));
-        applyChannelMixToLayer(layer, matrix, clampMin, clampMax);
         return;
     }
 
