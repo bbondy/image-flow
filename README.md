@@ -37,9 +37,15 @@ Main commands:
 - `add-layer`, `add-group`
 - `add-grid-layers`
 - `set-layer`, `set-group`
-- `set-transform` (translate/rotate or matrix)
-- `apply-effect` (`grayscale`, `sepia`)
+- `set-transform`, `concat-transform`, `clear-transform`
+- `apply-effect` (`grayscale`, `sepia`, `invert`, `threshold`)
 - `import-image`, `resize-layer`
+- `gradient-layer` (`linear` or `radial` procedural fill)
+- `checker-layer` (procedural checker/stripe fill)
+- `noise-layer` (seeded noise perturbation)
+- `replace-color` (soft tolerance-based remapping)
+- `channel-mix` (3x3 RGB matrix)
+- `draw-fill`, `draw-line`, `draw-circle`, `draw-fill-circle`, `draw-arc` (on image or mask target)
 - `mask-enable`, `mask-clear`, `mask-set-pixel`
 - `fill-layer`, `set-pixel`
 
@@ -61,6 +67,12 @@ Example:
 Example script:
 ```bash
 ./sample_scripts/iflow_ops_example.sh
+./sample_scripts/iflow_aurora_glitch_example.sh
+./sample_scripts/iflow_kaleido_gridstorm_example.sh
+./sample_scripts/iflow_neon_shards_example.sh
+./sample_scripts/iflow_orbital_wireframe_example.sh
+./sample_scripts/iflow_mask_etch_example.sh
+./sample_scripts/iflow_chroma_tunnel_example.sh
 ```
 
 ## Run Tests
