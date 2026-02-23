@@ -13,8 +13,8 @@ OPS_PATH="$OUT_DIR/tahoe_boxes.ops"
 # Tunable output size and grid layout.
 WIDTH=1200
 HEIGHT=800
-COLS=6
-ROWS=4
+COLS=60
+ROWS=40
 BORDER=10
 
 if [[ ! -f "$INPUT_IMAGE" ]]; then
@@ -32,7 +32,7 @@ mkdir -p "$OUT_DIR"
 
 cat > "$OPS_PATH" <<'OPS'
 # Add colored overlay boxes with a 10px gutter around each tile.
-add-grid-layers rows=4 cols=6 border=10 name_prefix=Box opacity=0.62 fills=255,80,80,190;255,170,40,190;240,240,70,190;100,210,120,190;70,190,230,190;110,130,255,190;185,110,255,190;255,105,195,190 blends=overlay;screen;lighten;difference
+add-grid-layers rows=10 cols=10 border=2 name_prefix=Box opacity=0.62 fills=255,80,80,190;255,170,40,190;240,240,70,190;100,210,120,190;70,190,230,190;110,130,255,190;185,110,255,190;255,105,195,190 blends=overlay;screen;lighten;difference
 OPS
 
 "$BIN" ops --in "$PROJECT_PATH" --out "$PROJECT_PATH" --ops-file "$OPS_PATH" --render "$RENDER_PATH"
