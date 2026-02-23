@@ -4,6 +4,7 @@
 #include "jpg.h"
 #include "layer.h"
 #include "png.h"
+#include "resize.h"
 #include "svg.h"
 #include "webp.h"
 
@@ -283,6 +284,29 @@ void testLayerMaskCanBeCleared() {
     require(p.r == 255 && p.g == 0 && p.b == 0, "Clearing a mask should restore full layer visibility");
 }
 
+void testRasterResizeFilters() {
+    PNGImage src(2, 2, Color(0, 0, 0));
+    src.setPixel(0, 0, Color(0, 0, 0));
+    src.setPixel(1, 0, Color(100, 0, 0));
+    src.setPixel(0, 1, Color(0, 100, 0));
+    src.setPixel(1, 1, Color(100, 100, 0));
+
+    PNGImage nearest = resizeImage(src, 4, 4, ResizeFilter::Nearest);
+    require(nearest.width() == 4 && nearest.height() == 4, "Nearest resize should produce requested dimensions");
+    const Color n00 = nearest.getPixel(0, 0);
+    const Color n11 = nearest.getPixel(1, 1);
+    const Color n22 = nearest.getPixel(2, 2);
+    require(n00.r == 0 && n00.g == 0 && n00.b == 0, "Nearest should map top-left to source 0,0");
+    require(n11.r == 0 && n11.g == 0 && n11.b == 0, "Nearest should keep first 2x2 block from source 0,0");
+    require(n22.r == 100 && n22.g == 100 && n22.b == 0, "Nearest should map bottom-right block to source 1,1");
+
+    PNGImage bilinearDefault = resizeImage(src, 4, 4);
+    const Color b11 = bilinearDefault.getPixel(1, 1);
+    require(b11.r == 25 && b11.g == 25 && b11.b == 0, "Bilinear default should interpolate center of first quadrant");
+    const Color b22 = bilinearDefault.getPixel(2, 2);
+    require(b22.r == 75 && b22.g == 75 && b22.b == 0, "Bilinear should interpolate toward bottom-right");
+}
+
 void testLayerTransformRotation() {
     Document doc(5, 5);
     Layer layer("Dot", 5, 5, PixelRGBA8(0, 0, 0, 0));
@@ -404,6 +428,7 @@ int main() {
         testLayeredSmileyMatchesDirect();
         testLayerMaskVisibilityControl();
         testLayerMaskCanBeCleared();
+        testRasterResizeFilters();
         testGroupedLayerOffsetAndVisibility();
         testGroupedLayerOpacityAffectsComposite();
         testIFLOWSerializationRoundtripPreservesStack();

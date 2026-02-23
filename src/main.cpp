@@ -3,6 +3,7 @@
 #include "gif.h"
 #include "jpg.h"
 #include "png.h"
+#include "resize.h"
 #include "svg.h"
 #include "webp.h"
 
@@ -68,6 +69,22 @@ int main() {
         PNGImage layeredBlend = example_api::createLayerBlendDemoPNG();
         if (!layeredBlend.save(outDir + "/layered_blend.png")) {
             std::cerr << "Failed to write layered_blend.png\n";
+            return 1;
+        }
+
+        PNGImage resizedDown = resizeImage(smileyPng, 128, 128);
+        if (!resizedDown.save(outDir + "/smiley_resize_128.png")) {
+            std::cerr << "Failed to write smiley_resize_128.png\n";
+            return 1;
+        }
+        PNGImage resizedUp = resizeImage(smileyPng, 512, 512);
+        if (!resizedUp.save(outDir + "/smiley_resize_512.png")) {
+            std::cerr << "Failed to write smiley_resize_512.png\n";
+            return 1;
+        }
+        PNGImage resizedUpNearest = resizeImage(smileyPng, 512, 512, ResizeFilter::Nearest);
+        if (!resizedUpNearest.save(outDir + "/smiley_resize_512_nearest.png")) {
+            std::cerr << "Failed to write smiley_resize_512_nearest.png\n";
             return 1;
         }
 
@@ -145,7 +162,8 @@ int main() {
 
         std::cout << "Wrote smiley.bmp, smiley.png, smiley.jpg, smiley.gif, "
                      "smiley.svg, smiley_svg_rasterized_512.png, smiley_copy.bmp, smiley_copy.png, smiley_copy.jpg, smiley_copy.gif, "
-                     "smiley_copy.svg, layered_blend.png, smiley_direct.png, smiley_layered.png, and smiley_layer_diff.png ("
+                     "smiley_copy.svg, layered_blend.png, smiley_resize_128.png, smiley_resize_512.png, smiley_resize_512_nearest.png, "
+                     "smiley_direct.png, smiley_layered.png, and smiley_layer_diff.png ("
                   << bmpDecoded.width() << "x" << bmpDecoded.height() << ")\n";
         std::cout << "Layered vs direct smiley diff: mean=" << meanDiff << " max=" << maxDiff << "\n";
     } catch (const std::exception& ex) {
