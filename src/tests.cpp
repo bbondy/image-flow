@@ -1,5 +1,6 @@
 #include "example_api.h"
 #include "bmp.h"
+#include "effects.h"
 #include "gif.h"
 #include "jpg.h"
 #include "layer.h"
@@ -313,6 +314,39 @@ void testRasterResizeFilters() {
     require(a22.r == 75 && a22.g == 75 && a22.b == 0, "BoxAverage should keep center region smooth");
 }
 
+void testEffectsOnRasterImage() {
+    PNGImage img(1, 1, Color(10, 40, 90));
+
+    applyGrayscale(img);
+    const Color gray = img.getPixel(0, 0);
+    require(gray.r == 37 && gray.g == 37 && gray.b == 37, "Grayscale should convert RGB to luma for RasterImage");
+
+    img.setPixel(0, 0, Color(10, 40, 90));
+    applySepia(img);
+    const Color sepia = img.getPixel(0, 0);
+    require(sepia.r == 52 && sepia.g == 46 && sepia.b == 36, "Sepia should apply full matrix transform for RasterImage");
+
+    img.setPixel(0, 0, Color(11, 22, 33));
+    applySepia(img, 0.0f);
+    const Color unchanged = img.getPixel(0, 0);
+    require(unchanged.r == 11 && unchanged.g == 22 && unchanged.b == 33, "Sepia strength 0 should keep RasterImage pixels unchanged");
+}
+
+void testEffectsOnLayerImageBuffer() {
+    Layer layer("Effect Layer", 1, 1, PixelRGBA8(100, 150, 200, 77));
+
+    applyGrayscale(layer);
+    const PixelRGBA8 gray = layer.image().getPixel(0, 0);
+    require(gray.r == 141 && gray.g == 141 && gray.b == 141, "Grayscale should convert Layer image RGB to luma");
+    require(gray.a == 77, "Grayscale should preserve alpha in Layer image");
+
+    layer.image().setPixel(0, 0, PixelRGBA8(100, 150, 200, 77));
+    applySepia(layer, 1.0f);
+    const PixelRGBA8 sepia = layer.image().getPixel(0, 0);
+    require(sepia.r == 192 && sepia.g == 171 && sepia.b == 134, "Sepia should apply full transform to Layer image");
+    require(sepia.a == 77, "Sepia should preserve alpha in Layer image");
+}
+
 void testLayerTransformRotation() {
     Document doc(5, 5);
     Layer layer("Dot", 5, 5, PixelRGBA8(0, 0, 0, 0));
@@ -435,6 +469,8 @@ int main() {
         testLayerMaskVisibilityControl();
         testLayerMaskCanBeCleared();
         testRasterResizeFilters();
+        testEffectsOnRasterImage();
+        testEffectsOnLayerImageBuffer();
         testGroupedLayerOffsetAndVisibility();
         testGroupedLayerOpacityAffectsComposite();
         testIFLOWSerializationRoundtripPreservesStack();
