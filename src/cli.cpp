@@ -22,6 +22,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -233,6 +234,41 @@ std::vector<std::string> splitNonEmptyByChar(const std::string& text, char delim
     return out;
 }
 
+int parseIntStrict(const std::string& text, const std::string& fieldName) {
+    std::size_t parsed = 0;
+    const long long value = std::stoll(text, &parsed, 10);
+    if (parsed != text.size()) {
+        throw std::runtime_error("Invalid integer for " + fieldName + ": " + text);
+    }
+    if (value < static_cast<long long>(std::numeric_limits<int>::min()) ||
+        value > static_cast<long long>(std::numeric_limits<int>::max())) {
+        throw std::runtime_error("Integer out of range for " + fieldName + ": " + text);
+    }
+    return static_cast<int>(value);
+}
+
+int parseIntInRange(const std::string& text, const std::string& fieldName, int minValue, int maxValue) {
+    const int value = parseIntStrict(text, fieldName);
+    if (value < minValue || value > maxValue) {
+        throw std::runtime_error("Value out of range for " + fieldName + ": " + text +
+                                 " (expected " + std::to_string(minValue) + ".." + std::to_string(maxValue) + ")");
+    }
+    return value;
+}
+
+double parseDoubleStrict(const std::string& text, const std::string& fieldName) {
+    std::size_t parsed = 0;
+    const double value = std::stod(text, &parsed);
+    if (parsed != text.size()) {
+        throw std::runtime_error("Invalid number for " + fieldName + ": " + text);
+    }
+    return value;
+}
+
+std::uint8_t parseByte(const std::string& text, const std::string& fieldName) {
+    return static_cast<std::uint8_t>(parseIntInRange(text, fieldName, 0, 255));
+}
+
 bool parseBoolFlag(const std::string& value) {
     const std::string lowered = toLower(value);
     if (lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on") {
@@ -249,7 +285,7 @@ std::pair<int, int> parseIntPair(const std::string& text) {
     if (parts.size() != 2) {
         throw std::runtime_error("Expected integer pair x,y but got: " + text);
     }
-    return {std::stoi(parts[0]), std::stoi(parts[1])};
+    return {parseIntStrict(parts[0], "x"), parseIntStrict(parts[1], "y")};
 }
 
 std::pair<double, double> parseDoublePair(const std::string& text) {
@@ -257,7 +293,7 @@ std::pair<double, double> parseDoublePair(const std::string& text) {
     if (parts.size() != 2) {
         throw std::runtime_error("Expected numeric pair x,y but got: " + text);
     }
-    return {std::stod(parts[0]), std::stod(parts[1])};
+    return {parseDoubleStrict(parts[0], "x"), parseDoubleStrict(parts[1], "y")};
 }
 
 std::vector<std::pair<int, int>> parseDrawPoints(const std::string& text,
@@ -279,18 +315,18 @@ std::vector<std::pair<int, int>> parseDrawPoints(const std::string& text,
 PixelRGBA8 parseRGBA(const std::string& text, bool allowRgb = false) {
     const std::vector<std::string> parts = splitByChar(text, ',');
     if (parts.size() == 3 && allowRgb) {
-        return PixelRGBA8(static_cast<std::uint8_t>(std::stoi(parts[0])),
-                          static_cast<std::uint8_t>(std::stoi(parts[1])),
-                          static_cast<std::uint8_t>(std::stoi(parts[2])),
+        return PixelRGBA8(parseByte(parts[0], "r"),
+                          parseByte(parts[1], "g"),
+                          parseByte(parts[2], "b"),
                           255);
     }
     if (parts.size() != 4) {
         throw std::runtime_error("Expected rgba=r,g,b,a but got: " + text);
     }
-    return PixelRGBA8(static_cast<std::uint8_t>(std::stoi(parts[0])),
-                      static_cast<std::uint8_t>(std::stoi(parts[1])),
-                      static_cast<std::uint8_t>(std::stoi(parts[2])),
-                      static_cast<std::uint8_t>(std::stoi(parts[3])));
+    return PixelRGBA8(parseByte(parts[0], "r"),
+                      parseByte(parts[1], "g"),
+                      parseByte(parts[2], "b"),
+                      parseByte(parts[3], "a"));
 }
 
 float clamp01(float value) {
@@ -1174,7 +1210,7 @@ std::vector<std::size_t> parsePathIndices(const std::string& path) {
         if (piece.empty()) {
             throw std::runtime_error("Invalid empty segment in path: " + path);
         }
-        const int value = std::stoi(piece);
+        const int value = parseIntStrict(piece, "path segment");
         if (value < 0) {
             throw std::runtime_error("Negative path segment in path: " + path);
         }
@@ -2311,7 +2347,7 @@ void applyOperation(Document& document, const std::string& opSpec, const std::fu
             throw std::runtime_error("import-image requires path= and file=");
         }
         Layer& layer = resolveLayerPath(document, kv.at("path"));
-        const std::uint8_t alpha = kv.find("alpha") == kv.end() ? 255 : static_cast<std::uint8_t>(std::stoi(kv.at("alpha")));
+        const std::uint8_t alpha = kv.find("alpha") == kv.end() ? 255 : parseByte(kv.at("alpha"), "alpha");
         importImageIntoLayer(layer, kv.at("file"), alpha, kv);
         return;
     }
@@ -2322,7 +2358,10 @@ void applyOperation(Document& document, const std::string& opSpec, const std::fu
         }
         Layer& layer = resolveLayerPath(document, kv.at("path"));
         const ResizeFilter filter = kv.find("filter") == kv.end() ? ResizeFilter::Bilinear : parseResizeFilter(kv.at("filter"));
-        resizeLayer(layer, std::stoi(kv.at("width")), std::stoi(kv.at("height")), filter);
+        resizeLayer(layer,
+                    parseIntInRange(kv.at("width"), "width", 1, std::numeric_limits<int>::max()),
+                    parseIntInRange(kv.at("height"), "height", 1, std::numeric_limits<int>::max()),
+                    filter);
         return;
     }
 
@@ -2367,7 +2406,10 @@ int runIFLOWOps(const std::vector<std::string>& args) {
         return 1;
     }
 
-    Document document = hasIn ? loadDocumentIFLOW(inPath) : Document(std::stoi(widthValue), std::stoi(heightValue));
+    Document document = hasIn
+                            ? loadDocumentIFLOW(inPath)
+                            : Document(parseIntInRange(widthValue, "width", 1, std::numeric_limits<int>::max()),
+                                       parseIntInRange(heightValue, "height", 1, std::numeric_limits<int>::max()));
     std::size_t emitCount = 0;
     const auto emitOutput = [&](const std::string& outputPath) {
         const ImageBuffer composite = document.composite();
@@ -2462,14 +2504,14 @@ int runIFLOWNew(const std::vector<std::string>& args) {
             if (split == std::string::npos || split == 0 || split + 1 >= fitValue.size()) {
                 throw std::runtime_error("Invalid --fit value; expected <w>x<h>");
             }
-            width = std::stoi(fitValue.substr(0, split));
-            height = std::stoi(fitValue.substr(split + 1));
+            width = parseIntInRange(fitValue.substr(0, split), "fit width", 1, std::numeric_limits<int>::max());
+            height = parseIntInRange(fitValue.substr(split + 1), "fit height", 1, std::numeric_limits<int>::max());
             const ResizeFilter filter = ResizeFilter::Bilinear;
             resizeLayer(baseLayer, width, height, filter);
         }
     } else {
-        width = std::stoi(widthValue);
-        height = std::stoi(heightValue);
+        width = parseIntInRange(widthValue, "width", 1, std::numeric_limits<int>::max());
+        height = parseIntInRange(heightValue, "height", 1, std::numeric_limits<int>::max());
     }
 
     Document document(width, height);
