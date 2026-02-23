@@ -1451,7 +1451,7 @@ Transform2D buildTransformFromKV(const std::unordered_map<std::string, std::stri
     return transform;
 }
 
-void applyOperation(Document& document, const std::string& opSpec) {
+void applyOperation(Document& document, const std::string& opSpec, const std::function<void(const std::string&)>& emitOutput) {
     const std::vector<std::string> tokens = splitWhitespace(opSpec);
     if (tokens.empty()) {
         throw std::runtime_error("Empty --op value");
@@ -1497,6 +1497,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         MaskSetPixel,
         ImportImage,
         ResizeLayer,
+        Emit,
     };
 
     static const std::unordered_map<std::string, ActionType> actionTypes = {
@@ -1535,6 +1536,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         {"mask-set-pixel", ActionType::MaskSetPixel},
         {"import-image", ActionType::ImportImage},
         {"resize-layer", ActionType::ResizeLayer},
+        {"emit", ActionType::Emit},
     };
     const auto actionTypeIt = actionTypes.find(action);
     const ActionType actionType = actionTypeIt == actionTypes.end() ? ActionType::Unknown : actionTypeIt->second;
@@ -2324,6 +2326,20 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
+    case ActionType::Emit: {
+        if (!emitOutput) {
+            throw std::runtime_error("emit is not supported in this context");
+        }
+        const auto fileIt = kv.find("file");
+        const auto outIt = kv.find("out");
+        const std::string outputPath = fileIt != kv.end() ? fileIt->second : (outIt != kv.end() ? outIt->second : "");
+        if (outputPath.empty()) {
+            throw std::runtime_error("emit requires file= (or out=)");
+        }
+        emitOutput(outputPath);
+        return;
+    }
+
     case ActionType::Unknown:
     default:
         break;
@@ -2352,9 +2368,22 @@ int runIFLOWOps(const std::vector<std::string>& args) {
     }
 
     Document document = hasIn ? loadDocumentIFLOW(inPath) : Document(std::stoi(widthValue), std::stoi(heightValue));
+    std::size_t emitCount = 0;
+    const auto emitOutput = [&](const std::string& outputPath) {
+        const ImageBuffer composite = document.composite();
+        const std::filesystem::path outFsPath(outputPath);
+        if (outFsPath.has_parent_path()) {
+            std::filesystem::create_directories(outFsPath.parent_path());
+        }
+        if (!saveCompositeByExtension(composite, outputPath)) {
+            throw std::runtime_error("Failed writing emit output: " + outputPath);
+        }
+        ++emitCount;
+        std::cout << "Emitted " << outputPath << "\n";
+    };
     for (std::size_t i = 0; i < opSpecs.size(); ++i) {
         try {
-            applyOperation(document, opSpecs[i]);
+            applyOperation(document, opSpecs[i], emitOutput);
         } catch (const std::exception& ex) {
             std::ostringstream error;
             error << "Failed op[" << i << "] \"" << opSpecs[i] << "\": " << ex.what();
@@ -2385,7 +2414,11 @@ int runIFLOWOps(const std::vector<std::string>& args) {
         return 0;
     }
 
-    std::cout << "Saved " << outPath << " after " << opSpecs.size() << " ops\n";
+    std::cout << "Saved " << outPath << " after " << opSpecs.size() << " ops";
+    if (emitCount > 0) {
+        std::cout << " and " << emitCount << " emit outputs";
+    }
+    std::cout << "\n";
     return 0;
 }
 
