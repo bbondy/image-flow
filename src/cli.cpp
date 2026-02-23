@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -74,10 +75,11 @@ void writeUsage() {
         << "Usage:\n"
         << "  image_flow help\n"
         << "  image_flow new --width <w> --height <h> --out <project.iflow>\n"
+        << "  image_flow new --from-image <file> [--fit <w>x<h>] --out <project.iflow>\n"
         << "  image_flow info --in <project.iflow>\n"
         << "  image_flow render --in <project.iflow> --out <image.{png|bmp|jpg|gif|webp|svg}>\n"
         << "  image_flow ops --in <project.iflow> --out <project.iflow> --op \"<action key=value ...>\" [--op ...]\n\n"
-        << "  image_flow ops --width <w> --height <h> --out <project.iflow> --op \"<action key=value ...>\" [--op ...]\n\n"
+        << "  image_flow ops --width <w> --height <h> --out <project.iflow> [--op ...|--ops-file <path>|--stdin]\n\n"
         << "Notes:\n"
         << "  - WebP output requires cwebp/dwebp tooling in PATH.\n";
 }
@@ -177,6 +179,17 @@ std::vector<std::string> splitByChar(const std::string& text, char delimiter) {
         parts.push_back(current);
     }
     return parts;
+}
+
+std::vector<std::string> splitNonEmptyByChar(const std::string& text, char delimiter) {
+    const std::vector<std::string> all = splitByChar(text, delimiter);
+    std::vector<std::string> out;
+    for (const std::string& value : all) {
+        if (!value.empty()) {
+            out.push_back(value);
+        }
+    }
+    return out;
 }
 
 bool parseBoolFlag(const std::string& value) {
@@ -324,6 +337,69 @@ ResizeFilter parseResizeFilter(const std::string& value) {
     throw std::runtime_error("Unsupported resize filter: " + value);
 }
 
+void addOpsFromStream(std::istream& in, std::vector<std::string>& outOps) {
+    std::string line;
+    while (std::getline(in, line)) {
+        std::size_t start = line.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) {
+            continue;
+        }
+        if (line[start] == '#') {
+            continue;
+        }
+        const std::size_t end = line.find_last_not_of(" \t\r\n");
+        outOps.push_back(line.substr(start, end - start + 1));
+    }
+}
+
+std::vector<std::string> gatherOps(const std::vector<std::string>& args) {
+    std::vector<std::string> ops = getFlagValues(args, "--op");
+
+    std::string opsFilePath;
+    if (getFlagValue(args, "--ops-file", opsFilePath)) {
+        std::ifstream file(opsFilePath);
+        if (!file.is_open()) {
+            throw std::runtime_error("Failed to open ops file: " + opsFilePath);
+        }
+        addOpsFromStream(file, ops);
+    }
+
+    const bool useStdin = std::find(args.begin(), args.end(), "--stdin") != args.end();
+    if (useStdin) {
+        addOpsFromStream(std::cin, ops);
+    }
+
+    return ops;
+}
+
+RasterImage* loadImageByExtension(const std::string& imagePath, BMPImage& bmp, PNGImage& png, JPGImage& jpg, GIFImage& gif, WEBPImage& webp) {
+    const std::string ext = extensionLower(imagePath);
+    if (ext == "bmp") {
+        bmp = BMPImage::load(imagePath);
+        return &bmp;
+    }
+    if (ext == "png") {
+        png = PNGImage::load(imagePath);
+        return &png;
+    }
+    if (ext == "jpg" || ext == "jpeg") {
+        jpg = JPGImage::load(imagePath);
+        return &jpg;
+    }
+    if (ext == "gif") {
+        gif = GIFImage::load(imagePath);
+        return &gif;
+    }
+    if (ext == "webp") {
+        if (!WEBPImage::isToolingAvailable()) {
+            throw std::runtime_error("WebP tooling unavailable (install cwebp and dwebp)");
+        }
+        webp = WEBPImage::load(imagePath);
+        return &webp;
+    }
+    throw std::runtime_error("Unsupported image format for --from-image: " + imagePath);
+}
+
 void importImageIntoLayer(Layer& layer, const std::string& imagePath, std::uint8_t alpha, const std::unordered_map<std::string, std::string>& kv) {
     const std::string ext = extensionLower(imagePath);
     if (ext == "png") {
@@ -406,6 +482,73 @@ void applyOperation(Document& document, const std::string& opSpec) {
         const int height = kv.find("height") == kv.end() ? document.height() : std::stoi(kv.at("height"));
         const PixelRGBA8 fill = kv.find("fill") == kv.end() ? PixelRGBA8(0, 0, 0, 0) : parseRGBA(kv.at("fill"));
         resolveGroupPath(document, parentPath).addLayer(Layer(name, width, height, fill));
+        return;
+    }
+
+    if (action == "add-grid-layers") {
+        const auto parentIt = kv.find("parent");
+        const std::string parentPath = parentIt == kv.end() ? "/" : parentIt->second;
+        LayerGroup& group = resolveGroupPath(document, parentPath);
+
+        const int rows = kv.find("rows") == kv.end() ? 1 : std::stoi(kv.at("rows"));
+        const int cols = kv.find("cols") == kv.end() ? 1 : std::stoi(kv.at("cols"));
+        if (rows <= 0 || cols <= 0) {
+            throw std::runtime_error("add-grid-layers requires rows>0 and cols>0");
+        }
+
+        const int border = kv.find("border") == kv.end() ? 0 : std::stoi(kv.at("border"));
+        const int startX = kv.find("start_x") == kv.end() ? 0 : std::stoi(kv.at("start_x"));
+        const int startY = kv.find("start_y") == kv.end() ? 0 : std::stoi(kv.at("start_y"));
+
+        int tileWidth = kv.find("tile_width") == kv.end() ? (document.width() / cols) : std::stoi(kv.at("tile_width"));
+        int tileHeight = kv.find("tile_height") == kv.end() ? (document.height() / rows) : std::stoi(kv.at("tile_height"));
+        if (tileWidth <= 0 || tileHeight <= 0) {
+            throw std::runtime_error("add-grid-layers tile dimensions must be positive");
+        }
+
+        const int innerWidth = tileWidth - (border * 2);
+        const int innerHeight = tileHeight - (border * 2);
+        if (innerWidth <= 0 || innerHeight <= 0) {
+            throw std::runtime_error("add-grid-layers border is too large for tile size");
+        }
+
+        const std::string prefix = kv.find("name_prefix") == kv.end() ? "Tile" : kv.at("name_prefix");
+        const float opacity = kv.find("opacity") == kv.end() ? 1.0f : std::stof(kv.at("opacity"));
+        const BlendMode blend = kv.find("blend") == kv.end() ? BlendMode::Normal : parseBlendMode(kv.at("blend"));
+        const PixelRGBA8 defaultFill = kv.find("fill") == kv.end() ? PixelRGBA8(0, 0, 0, 0) : parseRGBA(kv.at("fill"));
+
+        std::vector<PixelRGBA8> fillSequence;
+        if (kv.find("fills") != kv.end()) {
+            const std::vector<std::string> fillTokens = splitNonEmptyByChar(kv.at("fills"), ';');
+            for (const std::string& token : fillTokens) {
+                fillSequence.push_back(parseRGBA(token));
+            }
+        }
+
+        std::vector<BlendMode> blendSequence;
+        if (kv.find("blends") != kv.end()) {
+            const std::vector<std::string> blendTokens = splitNonEmptyByChar(kv.at("blends"), ';');
+            for (const std::string& token : blendTokens) {
+                blendSequence.push_back(parseBlendMode(token));
+            }
+        }
+
+        int sequenceIndex = 0;
+        for (int row = 0; row < rows; ++row) {
+            for (int col = 0; col < cols; ++col) {
+                const int x = startX + col * tileWidth + border;
+                const int y = startY + row * tileHeight + border;
+                const PixelRGBA8 fill = fillSequence.empty() ? defaultFill : fillSequence[sequenceIndex % static_cast<int>(fillSequence.size())];
+                const BlendMode layerBlend = blendSequence.empty() ? blend : blendSequence[sequenceIndex % static_cast<int>(blendSequence.size())];
+
+                Layer layer(prefix + "_" + std::to_string(row) + "_" + std::to_string(col), innerWidth, innerHeight, fill);
+                layer.setOpacity(opacity);
+                layer.setBlendMode(layerBlend);
+                layer.setOffset(x, y);
+                group.addLayer(layer);
+                ++sequenceIndex;
+            }
+        }
         return;
     }
 
@@ -588,11 +731,11 @@ int runIFLOWOps(const std::vector<std::string>& args) {
     const bool hasWidth = getFlagValue(args, "--width", widthValue);
     const bool hasHeight = getFlagValue(args, "--height", heightValue);
     const bool hasRender = getFlagValue(args, "--render", renderPath);
-    const std::vector<std::string> opSpecs = getFlagValues(args, "--op");
+    const std::vector<std::string> opSpecs = gatherOps(args);
 
     if (!hasOut || opSpecs.empty() || (!hasIn && (!hasWidth || !hasHeight))) {
         std::cerr << "Usage: image_flow ops --in <project.iflow> --out <project.iflow> --op \"<action key=value ...>\" [--op ...]\n"
-                  << "   or: image_flow ops --width <w> --height <h> --out <project.iflow> --op \"...\"\n";
+                  << "   or: image_flow ops --width <w> --height <h> --out <project.iflow> [--op ...|--ops-file <path>|--stdin]\n";
         return 1;
     }
 
@@ -638,22 +781,66 @@ int runIFLOWNew(const std::vector<std::string>& args) {
     std::string widthValue;
     std::string heightValue;
     std::string outPath;
-    if (!getFlagValue(args, "--width", widthValue) ||
-        !getFlagValue(args, "--height", heightValue) ||
-        !getFlagValue(args, "--out", outPath)) {
-        std::cerr << "Usage: image_flow new --width <w> --height <h> --out <project.iflow>\n";
+    std::string fromImagePath;
+    std::string fitValue;
+    const bool hasWidth = getFlagValue(args, "--width", widthValue);
+    const bool hasHeight = getFlagValue(args, "--height", heightValue);
+    const bool hasFromImage = getFlagValue(args, "--from-image", fromImagePath);
+    const bool hasFit = getFlagValue(args, "--fit", fitValue);
+
+    if (!getFlagValue(args, "--out", outPath) || ((hasWidth != hasHeight) || (!hasFromImage && (!hasWidth || !hasHeight)))) {
+        std::cerr << "Usage: image_flow new --width <w> --height <h> --out <project.iflow>\n"
+                  << "   or: image_flow new --from-image <file> [--fit <w>x<h>] --out <project.iflow>\n";
         return 1;
     }
 
-    const int width = std::stoi(widthValue);
-    const int height = std::stoi(heightValue);
+    int width = 0;
+    int height = 0;
+    Layer baseLayer;
+    bool addBaseLayer = false;
+
+    if (hasFromImage) {
+        BMPImage bmp;
+        PNGImage png;
+        JPGImage jpg;
+        GIFImage gif;
+        WEBPImage webp;
+        RasterImage* source = loadImageByExtension(fromImagePath, bmp, png, jpg, gif, webp);
+        width = source->width();
+        height = source->height();
+        addBaseLayer = true;
+        baseLayer = Layer("Base", width, height, PixelRGBA8(0, 0, 0, 0));
+        baseLayer.setImageFromRaster(*source, 255);
+
+        if (hasFit) {
+            const std::size_t split = fitValue.find('x');
+            if (split == std::string::npos || split == 0 || split + 1 >= fitValue.size()) {
+                throw std::runtime_error("Invalid --fit value; expected <w>x<h>");
+            }
+            width = std::stoi(fitValue.substr(0, split));
+            height = std::stoi(fitValue.substr(split + 1));
+            const ResizeFilter filter = ResizeFilter::Bilinear;
+            resizeLayer(baseLayer, width, height, filter);
+        }
+    } else {
+        width = std::stoi(widthValue);
+        height = std::stoi(heightValue);
+    }
+
     Document document(width, height);
+    if (addBaseLayer) {
+        document.addLayer(baseLayer);
+    }
     if (!saveDocumentIFLOW(document, outPath)) {
         std::cerr << "Failed saving IFLOW document: " << outPath << "\n";
         return 1;
     }
 
-    std::cout << "Created IFLOW project " << outPath << " (" << width << "x" << height << ")\n";
+    std::cout << "Created IFLOW project " << outPath << " (" << width << "x" << height << ")";
+    if (addBaseLayer) {
+        std::cout << " with imported base layer";
+    }
+    std::cout << "\n";
     return 0;
 }
 
