@@ -598,6 +598,7 @@ BlendMode parseBlendMode(const std::string& value) {
     if (lowered == "add") return BlendMode::Add;
     if (lowered == "subtract") return BlendMode::Subtract;
     if (lowered == "difference") return BlendMode::Difference;
+    if (lowered == "color-dodge" || lowered == "colordodge") return BlendMode::ColorDodge;
     throw std::runtime_error("Unsupported blend mode: " + value);
 }
 

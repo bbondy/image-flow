@@ -18,7 +18,8 @@ enum class BlendMode {
     Lighten,
     Add,
     Subtract,
-    Difference
+    Difference,
+    ColorDodge
 };
 
 struct PixelRGBA8 {

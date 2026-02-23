@@ -61,6 +61,11 @@ float blendChannel(BlendMode mode, float d, float s) {
             return std::max(0.0f, d - s);
         case BlendMode::Difference:
             return std::abs(d - s);
+        case BlendMode::ColorDodge:
+            if (s >= 1.0f) {
+                return 1.0f;
+            }
+            return std::min(1.0f, d / std::max(1e-6f, 1.0f - s));
         default:
             return s;
     }
@@ -667,7 +672,7 @@ std::int32_t blendModeToInt(BlendMode mode) {
 
 BlendMode intToBlendMode(std::int32_t value) {
     if (value < static_cast<std::int32_t>(BlendMode::Normal) ||
-        value > static_cast<std::int32_t>(BlendMode::Difference)) {
+        value > static_cast<std::int32_t>(BlendMode::ColorDodge)) {
         throw std::runtime_error("Invalid IFLOW blend mode value");
     }
     return static_cast<BlendMode>(value);
