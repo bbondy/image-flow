@@ -46,7 +46,7 @@ public:
     void fillPolygon(const std::vector<std::pair<int, int>>& points, const Color& color);
     void circle(int cx, int cy, int radius, const Color& color);
     void fillCircle(int cx, int cy, int radius, const Color& color);
-    void arc(int cx, int cy, int radius, float startRadians, float endRadians, const Color& color);
+    void arc(int cx, int cy, int radius, float startRadians, float endRadians, const Color& color, bool counterclockwise = false);
 
 private:
     struct SubPath {

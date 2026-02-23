@@ -1734,7 +1734,8 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::AddLayer) {
+    switch (actionType) {
+    case ActionType::AddLayer: {
         const auto parentIt = kv.find("parent");
         const std::string parentPath = parentIt == kv.end() ? "/" : parentIt->second;
         const std::string name = kv.find("name") == kv.end() ? "Layer" : kv.at("name");
@@ -1745,7 +1746,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::AddGridLayers) {
+    case ActionType::AddGridLayers: {
         const auto parentIt = kv.find("parent");
         const std::string parentPath = parentIt == kv.end() ? "/" : parentIt->second;
         LayerGroup& group = resolveGroupPath(document, parentPath);
@@ -1812,7 +1813,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::AddGroup) {
+    case ActionType::AddGroup: {
         const auto parentIt = kv.find("parent");
         const std::string parentPath = parentIt == kv.end() ? "/" : parentIt->second;
         const std::string name = kv.find("name") == kv.end() ? "Group" : kv.at("name");
@@ -1820,7 +1821,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::SetLayer) {
+    case ActionType::SetLayer: {
         if (kv.find("path") == kv.end()) {
             throw std::runtime_error("set-layer requires path=");
         }
@@ -1836,7 +1837,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::SetGroup) {
+    case ActionType::SetGroup: {
         if (kv.find("path") == kv.end()) {
             throw std::runtime_error("set-group requires path=");
         }
@@ -1856,7 +1857,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::SetTransform) {
+    case ActionType::SetTransform: {
         if (kv.find("path") == kv.end()) {
             throw std::runtime_error("set-transform requires path=");
         }
@@ -1870,7 +1871,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::ConcatTransform) {
+    case ActionType::ConcatTransform: {
         if (kv.find("path") == kv.end()) {
             throw std::runtime_error("concat-transform requires path=");
         }
@@ -1884,7 +1885,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::ClearTransform) {
+    case ActionType::ClearTransform: {
         if (kv.find("path") == kv.end()) {
             throw std::runtime_error("clear-transform requires path=");
         }
@@ -1897,7 +1898,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::DrawFill) {
+    case ActionType::DrawFill: {
         if (kv.find("path") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("draw-fill requires path= and rgba=");
         }
@@ -1910,7 +1911,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::DrawLine) {
+    case ActionType::DrawLine: {
         if (kv.find("path") == kv.end() || kv.find("x0") == kv.end() || kv.find("y0") == kv.end() ||
             kv.find("x1") == kv.end() || kv.find("y1") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("draw-line requires path= x0= y0= x1= y1= rgba=");
@@ -1926,7 +1927,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::DrawRect) {
+    case ActionType::DrawRect: {
         if (kv.find("path") == kv.end() || kv.find("x") == kv.end() || kv.find("y") == kv.end() ||
             kv.find("width") == kv.end() || kv.find("height") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("draw-rect requires path= x= y= width= height= rgba=");
@@ -1942,7 +1943,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::DrawFillRect) {
+    case ActionType::DrawFillRect: {
         if (kv.find("path") == kv.end() || kv.find("x") == kv.end() || kv.find("y") == kv.end() ||
             kv.find("width") == kv.end() || kv.find("height") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("draw-fill-rect requires path= x= y= width= height= rgba=");
@@ -1958,7 +1959,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::DrawEllipse) {
+    case ActionType::DrawEllipse: {
         if (kv.find("path") == kv.end() || kv.find("cx") == kv.end() || kv.find("cy") == kv.end() ||
             kv.find("rx") == kv.end() || kv.find("ry") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("draw-ellipse requires path= cx= cy= rx= ry= rgba=");
@@ -1974,7 +1975,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::DrawFillEllipse) {
+    case ActionType::DrawFillEllipse: {
         if (kv.find("path") == kv.end() || kv.find("cx") == kv.end() || kv.find("cy") == kv.end() ||
             kv.find("rx") == kv.end() || kv.find("ry") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("draw-fill-ellipse requires path= cx= cy= rx= ry= rgba=");
@@ -1990,7 +1991,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::DrawPolyline) {
+    case ActionType::DrawPolyline: {
         if (kv.find("path") == kv.end() || kv.find("points") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("draw-polyline requires path= points= rgba=");
         }
@@ -2004,7 +2005,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::DrawPolygon) {
+    case ActionType::DrawPolygon: {
         if (kv.find("path") == kv.end() || kv.find("points") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("draw-polygon requires path= points= rgba=");
         }
@@ -2018,7 +2019,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::DrawFillPolygon) {
+    case ActionType::DrawFillPolygon: {
         if (kv.find("path") == kv.end() || kv.find("points") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("draw-fill-polygon requires path= points= rgba=");
         }
@@ -2032,7 +2033,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::DrawCircle) {
+    case ActionType::DrawCircle: {
         if (kv.find("path") == kv.end() || kv.find("cx") == kv.end() || kv.find("cy") == kv.end() ||
             kv.find("radius") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("draw-circle requires path= cx= cy= radius= rgba=");
@@ -2047,7 +2048,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::DrawFillCircle) {
+    case ActionType::DrawFillCircle: {
         if (kv.find("path") == kv.end() || kv.find("cx") == kv.end() || kv.find("cy") == kv.end() ||
             kv.find("radius") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("draw-fill-circle requires path= cx= cy= radius= rgba=");
@@ -2062,7 +2063,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::DrawArc) {
+    case ActionType::DrawArc: {
         if (kv.find("path") == kv.end() || kv.find("cx") == kv.end() || kv.find("cy") == kv.end() ||
             kv.find("radius") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("draw-arc requires path= cx= cy= radius= rgba= and start/end");
@@ -2084,13 +2085,14 @@ void applyOperation(Document& document, const std::string& opSpec) {
         } else {
             throw std::runtime_error("draw-arc requires start_rad/end_rad or start_deg/end_deg");
         }
+        const bool counterclockwise = kv.find("counterclockwise") == kv.end() ? false : parseBoolFlag(kv.at("counterclockwise"));
 
         drawable.arc(std::stoi(kv.at("cx")), std::stoi(kv.at("cy")), std::stoi(kv.at("radius")),
-                     startRadians, endRadians, Color(rgba.r, rgba.g, rgba.b));
+                     startRadians, endRadians, Color(rgba.r, rgba.g, rgba.b), counterclockwise);
         return;
     }
 
-    if (actionType == ActionType::GradientLayer) {
+    case ActionType::GradientLayer: {
         if (kv.find("path") == kv.end()) {
             throw std::runtime_error("gradient-layer requires path=");
         }
@@ -2125,7 +2127,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         throw std::runtime_error("gradient-layer type must be linear or radial");
     }
 
-    if (actionType == ActionType::CheckerLayer) {
+    case ActionType::CheckerLayer: {
         if (kv.find("path") == kv.end()) {
             throw std::runtime_error("checker-layer requires path=");
         }
@@ -2141,7 +2143,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::NoiseLayer) {
+    case ActionType::NoiseLayer: {
         if (kv.find("path") == kv.end()) {
             throw std::runtime_error("noise-layer requires path=");
         }
@@ -2154,7 +2156,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::FillLayer) {
+    case ActionType::FillLayer: {
         if (kv.find("path") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("fill-layer requires path= and rgba=");
         }
@@ -2163,7 +2165,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::SetPixel) {
+    case ActionType::SetPixel: {
         if (kv.find("path") == kv.end() || kv.find("x") == kv.end() || kv.find("y") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("set-pixel requires path= x= y= rgba=");
         }
@@ -2172,7 +2174,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::MaskEnable) {
+    case ActionType::MaskEnable: {
         if (kv.find("path") == kv.end()) {
             throw std::runtime_error("mask-enable requires path=");
         }
@@ -2182,7 +2184,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::MaskClear) {
+    case ActionType::MaskClear: {
         if (kv.find("path") == kv.end()) {
             throw std::runtime_error("mask-clear requires path=");
         }
@@ -2190,7 +2192,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::MaskSetPixel) {
+    case ActionType::MaskSetPixel: {
         if (kv.find("path") == kv.end() || kv.find("x") == kv.end() || kv.find("y") == kv.end() || kv.find("rgba") == kv.end()) {
             throw std::runtime_error("mask-set-pixel requires path= x= y= rgba=");
         }
@@ -2202,7 +2204,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::ImportImage) {
+    case ActionType::ImportImage: {
         if (kv.find("path") == kv.end() || kv.find("file") == kv.end()) {
             throw std::runtime_error("import-image requires path= and file=");
         }
@@ -2212,7 +2214,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
-    if (actionType == ActionType::ResizeLayer) {
+    case ActionType::ResizeLayer: {
         if (kv.find("path") == kv.end() || kv.find("width") == kv.end() || kv.find("height") == kv.end()) {
             throw std::runtime_error("resize-layer requires path= width= height=");
         }
@@ -2220,6 +2222,11 @@ void applyOperation(Document& document, const std::string& opSpec) {
         const ResizeFilter filter = kv.find("filter") == kv.end() ? ResizeFilter::Bilinear : parseResizeFilter(kv.at("filter"));
         resizeLayer(layer, std::stoi(kv.at("width")), std::stoi(kv.at("height")), filter);
         return;
+    }
+
+    case ActionType::Unknown:
+    default:
+        break;
     }
 
     throw std::runtime_error("Unknown op action: " + action);

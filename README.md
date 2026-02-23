@@ -80,6 +80,7 @@ Binaries:
 
 All draw ops support `target=image|mask`.
 `draw-polyline`, `draw-polygon`, and `draw-fill-polygon` use `points=x0,y0;x1,y1;...`.
+`draw-arc` supports `counterclockwise=true|false`.
 
 ### Masks and Pixels
 - `mask-enable`
@@ -94,6 +95,7 @@ All draw ops support `target=image|mask`.
 - `noise-layer`
 - `fractal-noise`
 - `hatch`
+- `pencil-strokes`
 
 ### Color and Tone
 - `apply-effect effect=grayscale|sepia|invert|threshold`

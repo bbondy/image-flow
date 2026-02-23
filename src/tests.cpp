@@ -421,6 +421,26 @@ void testDrawableStrokeStyleControls() {
     require(joinCenter.r == 0 && joinCenter.g == 255 && joinCenter.b == 0, "round join should color join pivot");
 }
 
+void testDrawableArcDirectionAndWrap() {
+    const float pi = 3.14159265358979323846f;
+    const float start = 350.0f * pi / 180.0f;
+    const float end = 10.0f * pi / 180.0f;
+
+    PNGImage cwImg(24, 24, Color(0, 0, 0));
+    Drawable cw(cwImg);
+    cw.arc(12, 12, 8, start, end, Color(255, 0, 0), false);
+    const Color cwRight = cwImg.getPixel(20, 12);
+    const Color cwLeft = cwImg.getPixel(4, 12);
+    require(cwRight.r == 255 && cwRight.g == 0 && cwRight.b == 0, "clockwise arc should wrap across 0 radians");
+    require(cwLeft.r == 0 && cwLeft.g == 0 && cwLeft.b == 0, "clockwise short arc should not cross opposite side");
+
+    PNGImage ccwImg(24, 24, Color(0, 0, 0));
+    Drawable ccw(ccwImg);
+    ccw.arc(12, 12, 8, start, end, Color(0, 255, 0), true);
+    const Color ccwLeft = ccwImg.getPixel(4, 12);
+    require(ccwLeft.r == 0 && ccwLeft.g == 255 && ccwLeft.b == 0, "counterclockwise arc should take long sweep");
+}
+
 void testRasterResizeFilters() {
     PNGImage src(2, 2, Color(0, 0, 0));
     src.setPixel(0, 0, Color(0, 0, 0));
@@ -609,6 +629,7 @@ int main() {
         testDrawablePolylineAndPolygon();
         testDrawablePathStrokeAndFill();
         testDrawableStrokeStyleControls();
+        testDrawableArcDirectionAndWrap();
         testRasterResizeFilters();
         testEffectsOnRasterImage();
         testEffectsOnLayerImageBuffer();

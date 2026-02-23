@@ -415,22 +415,31 @@ void Drawable::fillCircle(int cx, int cy, int radius, const Color& color) {
     }
 }
 
-void Drawable::arc(int cx, int cy, int radius, float startRadians, float endRadians, const Color& color) {
+void Drawable::arc(int cx, int cy, int radius, float startRadians, float endRadians, const Color& color, bool counterclockwise) {
     if (radius <= 0) {
         return;
     }
-    if (endRadians < startRadians) {
-        std::swap(startRadians, endRadians);
+
+    const float twoPi = 6.28318530717958647692f;
+    float sweep = std::fmod(endRadians - startRadians, twoPi);
+    if (!counterclockwise && sweep < 0.0f) {
+        sweep += twoPi;
+    } else if (counterclockwise && sweep > 0.0f) {
+        sweep -= twoPi;
+    }
+    if (std::fabs(sweep) < 1e-6f) {
+        return;
     }
 
-    const float step = 1.0f / static_cast<float>(std::max(4, radius));
+    const int steps = std::max(4, static_cast<int>(std::ceil(std::fabs(sweep) * static_cast<float>(radius))));
     int prevX = static_cast<int>(std::lround(cx + radius * std::cos(startRadians)));
     int prevY = static_cast<int>(std::lround(cy + radius * std::sin(startRadians)));
 
-    for (float t = startRadians + step; t <= endRadians + step * 0.5f; t += step) {
-        const float clamped = std::min(t, endRadians);
-        const int x = static_cast<int>(std::lround(cx + radius * std::cos(clamped)));
-        const int y = static_cast<int>(std::lround(cy + radius * std::sin(clamped)));
+    for (int i = 1; i <= steps; ++i) {
+        const float t = static_cast<float>(i) / static_cast<float>(steps);
+        const float angle = startRadians + sweep * t;
+        const int x = static_cast<int>(std::lround(cx + radius * std::cos(angle)));
+        const int y = static_cast<int>(std::lround(cy + radius * std::sin(angle)));
         line(prevX, prevY, x, y, color);
         prevX = x;
         prevY = y;
