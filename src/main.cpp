@@ -29,7 +29,7 @@ PNGImage rasterToPNG(const RasterImage& src) {
 
 int main() {
     try {
-        const std::string outDir = "build/output/images";
+        const std::string outDir = "samples/output";
         const std::string samplesDir = "samples";
         std::filesystem::create_directories(outDir);
         std::filesystem::create_directories(samplesDir);
@@ -190,7 +190,7 @@ int main() {
             WEBPImage tahoeWebp = WEBPImage::load(tahoeInputWebp);
 
             PNGImage tahoeOriginal = rasterToPNG(tahoeWebp);
-            if (!tahoeOriginal.save(samplesDir + "/tahoe200-original.png")) {
+            if (!tahoeOriginal.save(outDir + "/tahoe200-original.png")) {
                 std::cerr << "Failed to write tahoe200-original.png\n";
                 return 1;
             }
@@ -198,7 +198,7 @@ int main() {
             WEBPImage tahoeGrayWebp = tahoeWebp;
             applyGrayscale(tahoeGrayWebp);
             PNGImage tahoeGray = rasterToPNG(tahoeGrayWebp);
-            if (!tahoeGray.save(samplesDir + "/tahoe200-grayscale.png")) {
+            if (!tahoeGray.save(outDir + "/tahoe200-grayscale.png")) {
                 std::cerr << "Failed to write tahoe200-grayscale.png\n";
                 return 1;
             }
@@ -206,7 +206,7 @@ int main() {
             WEBPImage tahoeSepiaWebp = tahoeWebp;
             applySepia(tahoeSepiaWebp, 1.0f);
             PNGImage tahoeSepia = rasterToPNG(tahoeSepiaWebp);
-            if (!tahoeSepia.save(samplesDir + "/tahoe200-sepia.png")) {
+            if (!tahoeSepia.save(outDir + "/tahoe200-sepia.png")) {
                 std::cerr << "Failed to write tahoe200-sepia.png\n";
                 return 1;
             }
@@ -220,7 +220,7 @@ int main() {
             const ImageBuffer layeredSepiaBuffer = doc.composite();
             PNGImage tahoeSepiaLayered(tahoeWebp.width(), tahoeWebp.height(), Color(0, 0, 0));
             copyToRasterImage(layeredSepiaBuffer, tahoeSepiaLayered);
-            if (!tahoeSepiaLayered.save(samplesDir + "/tahoe200-sepia-layered.png")) {
+            if (!tahoeSepiaLayered.save(outDir + "/tahoe200-sepia-layered.png")) {
                 std::cerr << "Failed to write tahoe200-sepia-layered.png\n";
                 return 1;
             }
@@ -231,8 +231,8 @@ int main() {
                      "smiley_copy.svg, layered_blend.png, smiley_resize_128.png, smiley_resize_512.png, smiley_resize_512_nearest.png, "
                      "smiley_resize_512_box_average.png, "
                      "smiley_direct.png, smiley_layered.png, smiley_layer_diff.png, "
-                     "samples/tahoe200-original.png, samples/tahoe200-grayscale.png, "
-                     "samples/tahoe200-sepia.png, and samples/tahoe200-sepia-layered.png ("
+                     "samples/output/tahoe200-original.png, samples/output/tahoe200-grayscale.png, "
+                     "samples/output/tahoe200-sepia.png, and samples/output/tahoe200-sepia-layered.png ("
                   << bmpDecoded.width() << "x" << bmpDecoded.height() << ")\n";
         std::cout << "Layered vs direct smiley diff: mean=" << meanDiff << " max=" << maxDiff << "\n";
     } catch (const std::exception& ex) {
