@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BIN="$ROOT_DIR/build/bin/samples"
+BIN="$ROOT_DIR/build/bin/iflow"
 INPUT_IMAGE="$ROOT_DIR/samples/tahoe200-finish.webp"
 OUT_DIR="$ROOT_DIR/build/output/images"
 PROJECT_PATH="$OUT_DIR/tahoe_boxes.iflow"

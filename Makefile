@@ -3,7 +3,7 @@ CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -O2
 ARCH := $(shell uname -m)
 
 BIN_DIR := build/bin
-TARGET := $(BIN_DIR)/samples
+TARGET := $(BIN_DIR)/iflow
 TEST_TARGET := $(BIN_DIR)/tests
 OBJ_DIR := build/intermediate/$(ARCH)
 CORE_SRCS := src/bmp.cpp src/png.cpp src/jpg.cpp src/gif.cpp src/svg.cpp src/webp.cpp src/drawable.cpp src/example_api.cpp src/layer.cpp src/effects.cpp

@@ -20,15 +20,15 @@ make
 
 ## CLI
 ```bash
-./build/bin/samples help
+./build/bin/iflow help
 ```
 
 Main commands:
-- `./build/bin/samples samples`
-- `./build/bin/samples iflow new --width <w> --height <h> --out <project.iflow>`
-- `./build/bin/samples iflow info --in <project.iflow>`
-- `./build/bin/samples iflow render --in <project.iflow> --out <image.{png|bmp|jpg|gif|webp|svg}>`
-- `./build/bin/samples iflow ops --in <project.iflow> --out <project.iflow> --op "<action key=value ...>" [--op ...] [--render <image.png>]`
+- `./build/bin/iflow samples`
+- `./build/bin/iflow iflow new --width <w> --height <h> --out <project.iflow>`
+- `./build/bin/iflow iflow info --in <project.iflow>`
+- `./build/bin/iflow iflow render --in <project.iflow> --out <image.{png|bmp|jpg|gif|webp|svg}>`
+- `./build/bin/iflow iflow ops --in <project.iflow> --out <project.iflow> --op "<action key=value ...>" [--op ...] [--render <image.png>]`
 
 If no command is provided, the CLI defaults to `samples`.
 
@@ -44,7 +44,7 @@ If no command is provided, the CLI defaults to `samples`.
 
 Example:
 ```bash
-./build/bin/samples iflow ops \
+./build/bin/iflow iflow ops \
   --width 512 --height 512 \
   --out build/output/images/demo.iflow \
   --op "add-layer name=Base fill=0,0,0,255" \
