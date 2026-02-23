@@ -1774,6 +1774,38 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
+    if (action == "draw-ellipse") {
+        if (kv.find("path") == kv.end() || kv.find("cx") == kv.end() || kv.find("cy") == kv.end() ||
+            kv.find("rx") == kv.end() || kv.find("ry") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-ellipse requires path= cx= cy= rx= ry= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.ellipse(std::stoi(kv.at("cx")), std::stoi(kv.at("cy")),
+                         std::stoi(kv.at("rx")), std::stoi(kv.at("ry")),
+                         Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    if (action == "draw-fill-ellipse") {
+        if (kv.find("path") == kv.end() || kv.find("cx") == kv.end() || kv.find("cy") == kv.end() ||
+            kv.find("rx") == kv.end() || kv.find("ry") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-fill-ellipse requires path= cx= cy= rx= ry= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.fillEllipse(std::stoi(kv.at("cx")), std::stoi(kv.at("cy")),
+                             std::stoi(kv.at("rx")), std::stoi(kv.at("ry")),
+                             Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
     if (action == "draw-circle") {
         if (kv.find("path") == kv.end() || kv.find("cx") == kv.end() || kv.find("cy") == kv.end() ||
             kv.find("radius") == kv.end() || kv.find("rgba") == kv.end()) {

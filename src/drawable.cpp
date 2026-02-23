@@ -95,6 +95,64 @@ void Drawable::fillRect(int x, int y, int width, int height, const Color& color)
     }
 }
 
+void Drawable::ellipse(int cx, int cy, int rx, int ry, const Color& color) {
+    if (rx < 0 || ry < 0) {
+        return;
+    }
+    if (rx == 0 && ry == 0) {
+        m_image.setPixel(cx, cy, color);
+        return;
+    }
+    if (ry == 0) {
+        line(cx - rx, cy, cx + rx, cy, color);
+        return;
+    }
+    if (rx == 0) {
+        line(cx, cy - ry, cx, cy + ry, color);
+        return;
+    }
+
+    const float twoPi = 6.28318530717958647692f;
+    const int steps = std::max(24, std::max(rx, ry) * 8);
+    int prevX = static_cast<int>(std::lround(cx + static_cast<float>(rx)));
+    int prevY = cy;
+    for (int i = 1; i <= steps; ++i) {
+        const float t = twoPi * static_cast<float>(i) / static_cast<float>(steps);
+        const int x = static_cast<int>(std::lround(cx + static_cast<float>(rx) * std::cos(t)));
+        const int y = static_cast<int>(std::lround(cy + static_cast<float>(ry) * std::sin(t)));
+        line(prevX, prevY, x, y, color);
+        prevX = x;
+        prevY = y;
+    }
+}
+
+void Drawable::fillEllipse(int cx, int cy, int rx, int ry, const Color& color) {
+    if (rx < 0 || ry < 0) {
+        return;
+    }
+    if (rx == 0 && ry == 0) {
+        m_image.setPixel(cx, cy, color);
+        return;
+    }
+    if (ry == 0) {
+        line(cx - rx, cy, cx + rx, cy, color);
+        return;
+    }
+    if (rx == 0) {
+        line(cx, cy - ry, cx, cy + ry, color);
+        return;
+    }
+
+    for (int dy = -ry; dy <= ry; ++dy) {
+        const float t = static_cast<float>(dy) / static_cast<float>(ry);
+        const float span = static_cast<float>(rx) * std::sqrt(std::max(0.0f, 1.0f - t * t));
+        const int xSpan = static_cast<int>(std::floor(span + 0.5f));
+        for (int dx = -xSpan; dx <= xSpan; ++dx) {
+            m_image.setPixel(cx + dx, cy + dy, color);
+        }
+    }
+}
+
 void Drawable::plotCircleOctants(int cx, int cy, int x, int y, const Color& color) {
     m_image.setPixel(cx + x, cy + y, color);
     m_image.setPixel(cx - x, cy + y, color);

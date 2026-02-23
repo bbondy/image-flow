@@ -306,6 +306,26 @@ void testDrawableRectAndFillRect() {
     require(outside.r == 0 && outside.g == 0 && outside.b == 0, "fillRect should not affect outside pixels");
 }
 
+void testDrawableEllipseAndFillEllipse() {
+    PNGImage stroked(14, 14, Color(0, 0, 0));
+    Drawable dStroke(stroked);
+    dStroke.ellipse(7, 7, 4, 3, Color(255, 0, 0));
+    const Color right = stroked.getPixel(11, 7);
+    const Color top = stroked.getPixel(7, 4);
+    const Color center = stroked.getPixel(7, 7);
+    require(right.r == 255 && right.g == 0 && right.b == 0, "ellipse should reach rightmost point");
+    require(top.r == 255 && top.g == 0 && top.b == 0, "ellipse should reach top point");
+    require(center.r == 0 && center.g == 0 && center.b == 0, "ellipse stroke should not fill center");
+
+    PNGImage filled(14, 14, Color(0, 0, 0));
+    Drawable dFill(filled);
+    dFill.fillEllipse(7, 7, 4, 3, Color(0, 0, 255));
+    const Color inside = filled.getPixel(7, 7);
+    const Color outside = filled.getPixel(1, 1);
+    require(inside.r == 0 && inside.g == 0 && inside.b == 255, "fillEllipse should fill center");
+    require(outside.r == 0 && outside.g == 0 && outside.b == 0, "fillEllipse should not affect outside pixels");
+}
+
 void testRasterResizeFilters() {
     PNGImage src(2, 2, Color(0, 0, 0));
     src.setPixel(0, 0, Color(0, 0, 0));
@@ -490,6 +510,7 @@ int main() {
         testLayerMaskVisibilityControl();
         testLayerMaskCanBeCleared();
         testDrawableRectAndFillRect();
+        testDrawableEllipseAndFillEllipse();
         testRasterResizeFilters();
         testEffectsOnRasterImage();
         testEffectsOnLayerImageBuffer();
