@@ -1474,6 +1474,8 @@ void applyOperation(Document& document, const std::string& opSpec) {
         DrawLine,
         DrawRect,
         DrawFillRect,
+        DrawRoundRect,
+        DrawFillRoundRect,
         DrawEllipse,
         DrawFillEllipse,
         DrawPolyline,
@@ -1508,6 +1510,8 @@ void applyOperation(Document& document, const std::string& opSpec) {
         {"draw-line", ActionType::DrawLine},
         {"draw-rect", ActionType::DrawRect},
         {"draw-fill-rect", ActionType::DrawFillRect},
+        {"draw-round-rect", ActionType::DrawRoundRect},
+        {"draw-fill-round-rect", ActionType::DrawFillRoundRect},
         {"draw-ellipse", ActionType::DrawEllipse},
         {"draw-fill-ellipse", ActionType::DrawFillEllipse},
         {"draw-polyline", ActionType::DrawPolyline},
@@ -1958,6 +1962,40 @@ void applyOperation(Document& document, const std::string& opSpec) {
         drawable.fillRect(std::stoi(kv.at("x")), std::stoi(kv.at("y")),
                           std::stoi(kv.at("width")), std::stoi(kv.at("height")),
                           Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    case ActionType::DrawRoundRect: {
+        if (kv.find("path") == kv.end() || kv.find("x") == kv.end() || kv.find("y") == kv.end() ||
+            kv.find("width") == kv.end() || kv.find("height") == kv.end() ||
+            kv.find("radius") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-round-rect requires path= x= y= width= height= radius= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.roundRect(std::stoi(kv.at("x")), std::stoi(kv.at("y")),
+                           std::stoi(kv.at("width")), std::stoi(kv.at("height")),
+                           std::stoi(kv.at("radius")), Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    case ActionType::DrawFillRoundRect: {
+        if (kv.find("path") == kv.end() || kv.find("x") == kv.end() || kv.find("y") == kv.end() ||
+            kv.find("width") == kv.end() || kv.find("height") == kv.end() ||
+            kv.find("radius") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-fill-round-rect requires path= x= y= width= height= radius= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.fillRoundRect(std::stoi(kv.at("x")), std::stoi(kv.at("y")),
+                               std::stoi(kv.at("width")), std::stoi(kv.at("height")),
+                               std::stoi(kv.at("radius")), Color(rgba.r, rgba.g, rgba.b));
         return;
     }
 

@@ -454,6 +454,24 @@ void testDrawableFloodFill() {
     require(outside.r == 0 && outside.g == 0 && outside.b == 0, "floodFill should not leak outside border");
 }
 
+void testDrawableRoundRectAndFillRoundRect() {
+    PNGImage strokeImg(20, 20, Color(0, 0, 0));
+    Drawable ds(strokeImg);
+    ds.roundRect(3, 3, 12, 10, 3, Color(255, 0, 255));
+    const Color edge = strokeImg.getPixel(9, 3);
+    const Color cornerOutside = strokeImg.getPixel(3, 3);
+    require(edge.r == 255 && edge.g == 0 && edge.b == 255, "roundRect should draw edge segments");
+    require(cornerOutside.r == 0 && cornerOutside.g == 0 && cornerOutside.b == 0, "roundRect should clip sharp corner");
+
+    PNGImage fillImg(20, 20, Color(0, 0, 0));
+    Drawable df(fillImg);
+    df.fillRoundRect(3, 3, 12, 10, 3, Color(0, 255, 255));
+    const Color inside = fillImg.getPixel(9, 8);
+    const Color outside = fillImg.getPixel(1, 1);
+    require(inside.r == 0 && inside.g == 255 && inside.b == 255, "fillRoundRect should fill interior");
+    require(outside.r == 0 && outside.g == 0 && outside.b == 0, "fillRoundRect should not affect outside pixels");
+}
+
 void testRasterResizeFilters() {
     PNGImage src(2, 2, Color(0, 0, 0));
     src.setPixel(0, 0, Color(0, 0, 0));
@@ -644,6 +662,7 @@ int main() {
         testDrawableStrokeStyleControls();
         testDrawableArcDirectionAndWrap();
         testDrawableFloodFill();
+        testDrawableRoundRectAndFillRoundRect();
         testRasterResizeFilters();
         testEffectsOnRasterImage();
         testEffectsOnLayerImageBuffer();

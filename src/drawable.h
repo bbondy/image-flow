@@ -39,6 +39,8 @@ public:
     void fillPath(const Color& color);
     void rect(int x, int y, int width, int height, const Color& color);
     void fillRect(int x, int y, int width, int height, const Color& color);
+    void roundRect(int x, int y, int width, int height, int radius, const Color& color);
+    void fillRoundRect(int x, int y, int width, int height, int radius, const Color& color);
     void ellipse(int cx, int cy, int rx, int ry, const Color& color);
     void fillEllipse(int cx, int cy, int rx, int ry, const Color& color);
     void polyline(const std::vector<std::pair<int, int>>& points, const Color& color);

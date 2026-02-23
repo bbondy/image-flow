@@ -69,6 +69,8 @@ Binaries:
 - `draw-line`
 - `draw-rect`
 - `draw-fill-rect`
+- `draw-round-rect`
+- `draw-fill-round-rect`
 - `draw-ellipse`
 - `draw-fill-ellipse`
 - `draw-polyline`

@@ -22,6 +22,51 @@ bool normalizeRect(int x, int y, int width, int height, int& left, int& top, int
     bottom = y1 - 1;
     return true;
 }
+
+void pushUniquePoint(std::vector<std::pair<int, int>>& points, int x, int y) {
+    if (!points.empty() && points.back().first == x && points.back().second == y) {
+        return;
+    }
+    points.push_back({x, y});
+}
+
+std::vector<std::pair<int, int>> buildRoundedRectContour(int left, int top, int right, int bottom, int radius) {
+    std::vector<std::pair<int, int>> points;
+    const float pi = 3.14159265358979323846f;
+    const int steps = std::max(4, radius * 2);
+    const int r = std::max(0, radius);
+
+    const int trCx = right - r;
+    const int trCy = top + r;
+    const int brCx = right - r;
+    const int brCy = bottom - r;
+    const int blCx = left + r;
+    const int blCy = bottom - r;
+    const int tlCx = left + r;
+    const int tlCy = top + r;
+
+    pushUniquePoint(points, left + r, top);
+    pushUniquePoint(points, right - r, top);
+
+    auto appendArc = [&](int cx, int cy, float startAngle, float endAngle) {
+        for (int i = 1; i <= steps; ++i) {
+            const float t = static_cast<float>(i) / static_cast<float>(steps);
+            const float angle = startAngle + (endAngle - startAngle) * t;
+            const int px = static_cast<int>(std::lround(static_cast<float>(cx) + static_cast<float>(r) * std::cos(angle)));
+            const int py = static_cast<int>(std::lround(static_cast<float>(cy) + static_cast<float>(r) * std::sin(angle)));
+            pushUniquePoint(points, px, py);
+        }
+    };
+
+    appendArc(trCx, trCy, -pi * 0.5f, 0.0f);
+    pushUniquePoint(points, right, bottom - r);
+    appendArc(brCx, brCy, 0.0f, pi * 0.5f);
+    pushUniquePoint(points, left + r, bottom);
+    appendArc(blCx, blCy, pi * 0.5f, pi);
+    pushUniquePoint(points, left, top + r);
+    appendArc(tlCx, tlCy, pi, pi * 1.5f);
+    return points;
+}
 } // namespace
 
 Drawable::Drawable(Image& image) : m_image(image) {}
@@ -247,6 +292,46 @@ void Drawable::fillRect(int x, int y, int width, int height, const Color& color)
             m_image.setPixel(px, py, color);
         }
     }
+}
+
+void Drawable::roundRect(int x, int y, int width, int height, int radius, const Color& color) {
+    int left = 0;
+    int top = 0;
+    int right = 0;
+    int bottom = 0;
+    if (!normalizeRect(x, y, width, height, left, top, right, bottom)) {
+        return;
+    }
+
+    const int maxRadius = std::max(0, std::min((right - left + 1) / 2, (bottom - top + 1) / 2));
+    const int r = std::max(0, std::min(radius, maxRadius));
+    if (r == 0) {
+        rect(left, top, right - left + 1, bottom - top + 1, color);
+        return;
+    }
+
+    const std::vector<std::pair<int, int>> contour = buildRoundedRectContour(left, top, right, bottom, r);
+    polygon(contour, color);
+}
+
+void Drawable::fillRoundRect(int x, int y, int width, int height, int radius, const Color& color) {
+    int left = 0;
+    int top = 0;
+    int right = 0;
+    int bottom = 0;
+    if (!normalizeRect(x, y, width, height, left, top, right, bottom)) {
+        return;
+    }
+
+    const int maxRadius = std::max(0, std::min((right - left + 1) / 2, (bottom - top + 1) / 2));
+    const int r = std::max(0, std::min(radius, maxRadius));
+    if (r == 0) {
+        fillRect(left, top, right - left + 1, bottom - top + 1, color);
+        return;
+    }
+
+    const std::vector<std::pair<int, int>> contour = buildRoundedRectContour(left, top, right, bottom, r);
+    fillPolygon(contour, color);
 }
 
 void Drawable::ellipse(int cx, int cy, int rx, int ry, const Color& color) {
