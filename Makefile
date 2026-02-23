@@ -11,9 +11,10 @@ CORE_SRCS := src/bmp.cpp src/png.cpp src/jpg.cpp src/gif.cpp src/svg.cpp src/web
 APP_SRCS := src/main.cpp src/cli.cpp $(CORE_SRCS)
 SAMPLES_SRCS := src/generate_samples_main.cpp src/sample_generator.cpp $(CORE_SRCS)
 TEST_SRCS := src/tests.cpp src/cli.cpp $(CORE_SRCS)
-OBJS := $(patsubst %.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS))
+CLI_SRCS := src/cli_args.cpp src/cli_parse.cpp src/cli_help.cpp src/cli_shared.cpp src/cli_project_cmds.cpp src/cli_impl.cpp
+OBJS := $(patsubst %.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS) $(CLI_SRCS))
 SAMPLES_OBJS := $(patsubst %.cpp,$(OBJ_DIR)/%.o,$(SAMPLES_SRCS))
-TEST_OBJS := $(patsubst %.cpp,$(OBJ_DIR)/%.o,$(TEST_SRCS))
+TEST_OBJS := $(patsubst %.cpp,$(OBJ_DIR)/%.o,$(TEST_SRCS) $(CLI_SRCS))
 
 all: $(TARGET) $(SAMPLES_TARGET)
 
