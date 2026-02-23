@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <iostream>
 #include <limits>
 #include <stdexcept>
 
@@ -917,7 +918,8 @@ bool saveDocumentIFLOW(const Document& document, const std::string& path) {
         writeBinary(out, static_cast<std::int32_t>(document.width()));
         writeBinary(out, static_cast<std::int32_t>(document.height()));
         writeGroup(out, document.rootGroup());
-    } catch (const std::exception&) {
+    } catch (const std::exception& ex) {
+        std::cerr << "saveDocumentIFLOW failed for '" << path << "': " << ex.what() << "\n";
         return false;
     }
 
