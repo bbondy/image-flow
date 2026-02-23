@@ -1,7 +1,6 @@
 # Build artifacts
 *.o
 build/
-smiley
 tests
 
 # Generated images
