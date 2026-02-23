@@ -8,7 +8,6 @@ tests
 *.png
 *.jpg
 *.gif
-samples/output/
 
 # Editor/OS noise
 *.swp

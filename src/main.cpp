@@ -29,7 +29,7 @@ PNGImage rasterToPNG(const RasterImage& src) {
 
 int main() {
     try {
-        const std::string outDir = "samples/output";
+        const std::string outDir = "build/output/images";
         const std::string samplesDir = "samples";
         std::filesystem::create_directories(outDir);
         std::filesystem::create_directories(samplesDir);
@@ -231,8 +231,8 @@ int main() {
                      "smiley_copy.svg, layered_blend.png, smiley_resize_128.png, smiley_resize_512.png, smiley_resize_512_nearest.png, "
                      "smiley_resize_512_box_average.png, "
                      "smiley_direct.png, smiley_layered.png, smiley_layer_diff.png, "
-                     "samples/output/tahoe200-original.png, samples/output/tahoe200-grayscale.png, "
-                     "samples/output/tahoe200-sepia.png, and samples/output/tahoe200-sepia-layered.png ("
+                     "build/output/images/tahoe200-original.png, build/output/images/tahoe200-grayscale.png, "
+                     "build/output/images/tahoe200-sepia.png, and build/output/images/tahoe200-sepia-layered.png ("
                   << bmpDecoded.width() << "x" << bmpDecoded.height() << ")\n";
         std::cout << "Layered vs direct smiley diff: mean=" << meanDiff << " max=" << maxDiff << "\n";
     } catch (const std::exception& ex) {
