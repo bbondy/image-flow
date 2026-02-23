@@ -178,12 +178,39 @@ bool saveCompositeByExtension(const ImageBuffer& composite, const std::string& o
     throw std::runtime_error("Unsupported output extension: " + ext);
 }
 
+const char* blendModeName(BlendMode mode) {
+    switch (mode) {
+        case BlendMode::Normal:
+            return "normal";
+        case BlendMode::Multiply:
+            return "multiply";
+        case BlendMode::Screen:
+            return "screen";
+        case BlendMode::Overlay:
+            return "overlay";
+        case BlendMode::Darken:
+            return "darken";
+        case BlendMode::Lighten:
+            return "lighten";
+        case BlendMode::Add:
+            return "add";
+        case BlendMode::Subtract:
+            return "subtract";
+        case BlendMode::Difference:
+            return "difference";
+        case BlendMode::ColorDodge:
+            return "color-dodge";
+        default:
+            return "unknown";
+    }
+}
+
 void printGroupInfo(const LayerGroup& group, const std::string& indent) {
     std::cout << indent << "Group '" << group.name() << "'"
               << " nodes=" << group.nodeCount()
               << " visible=" << (group.visible() ? "true" : "false")
               << " opacity=" << group.opacity()
-              << " blendMode=" << static_cast<int>(group.blendMode())
+              << " blendMode=" << blendModeName(group.blendMode())
               << " offset=(" << group.offsetX() << "," << group.offsetY() << ")\n";
 
     for (std::size_t i = 0; i < group.nodeCount(); ++i) {
@@ -197,7 +224,7 @@ void printGroupInfo(const LayerGroup& group, const std::string& indent) {
                   << " size=" << layer.image().width() << "x" << layer.image().height()
                   << " visible=" << (layer.visible() ? "true" : "false")
                   << " opacity=" << layer.opacity()
-                  << " blendMode=" << static_cast<int>(layer.blendMode())
+                  << " blendMode=" << blendModeName(layer.blendMode())
                   << " offset=(" << layer.offsetX() << "," << layer.offsetY() << ")"
                   << " mask=" << (layer.hasMask() ? "true" : "false") << "\n";
     }
