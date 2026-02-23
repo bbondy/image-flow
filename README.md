@@ -67,6 +67,8 @@ Binaries:
 ### Drawing
 - `draw-fill`
 - `draw-line`
+- `draw-rect`
+- `draw-fill-rect`
 - `draw-circle`
 - `draw-fill-circle`
 - `draw-arc`

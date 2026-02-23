@@ -3,6 +3,25 @@
 #include <algorithm>
 #include <cmath>
 
+namespace {
+bool normalizeRect(int x, int y, int width, int height, int& left, int& top, int& right, int& bottom) {
+    if (width == 0 || height == 0) {
+        return false;
+    }
+
+    const int x0 = width > 0 ? x : x + width;
+    const int x1 = width > 0 ? x + width : x;
+    const int y0 = height > 0 ? y : y + height;
+    const int y1 = height > 0 ? y + height : y;
+
+    left = x0;
+    right = x1 - 1;
+    top = y0;
+    bottom = y1 - 1;
+    return true;
+}
+} // namespace
+
 Drawable::Drawable(Image& image) : m_image(image) {}
 
 void Drawable::setPixel(int x, int y, const Color& color) {
@@ -41,6 +60,37 @@ void Drawable::line(int x0, int y0, int x1, int y1, const Color& color) {
         if (e2 <= dx) {
             err += dx;
             y0 += sy;
+        }
+    }
+}
+
+void Drawable::rect(int x, int y, int width, int height, const Color& color) {
+    int left = 0;
+    int top = 0;
+    int right = 0;
+    int bottom = 0;
+    if (!normalizeRect(x, y, width, height, left, top, right, bottom)) {
+        return;
+    }
+
+    line(left, top, right, top, color);
+    line(right, top, right, bottom, color);
+    line(right, bottom, left, bottom, color);
+    line(left, bottom, left, top, color);
+}
+
+void Drawable::fillRect(int x, int y, int width, int height, const Color& color) {
+    int left = 0;
+    int top = 0;
+    int right = 0;
+    int bottom = 0;
+    if (!normalizeRect(x, y, width, height, left, top, right, bottom)) {
+        return;
+    }
+
+    for (int py = top; py <= bottom; ++py) {
+        for (int px = left; px <= right; ++px) {
+            m_image.setPixel(px, py, color);
         }
     }
 }

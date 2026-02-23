@@ -1,5 +1,6 @@
 #include "example_api.h"
 #include "bmp.h"
+#include "drawable.h"
 #include "effects.h"
 #include "gif.h"
 #include "jpg.h"
@@ -285,6 +286,26 @@ void testLayerMaskCanBeCleared() {
     require(p.r == 255 && p.g == 0 && p.b == 0, "Clearing a mask should restore full layer visibility");
 }
 
+void testDrawableRectAndFillRect() {
+    PNGImage stroked(12, 12, Color(0, 0, 0));
+    Drawable dStroke(stroked);
+    dStroke.rect(2, 3, 6, 4, Color(255, 0, 0));
+    const Color topEdge = stroked.getPixel(3, 3);
+    const Color leftEdge = stroked.getPixel(2, 5);
+    const Color interior = stroked.getPixel(4, 4);
+    require(topEdge.r == 255 && topEdge.g == 0 && topEdge.b == 0, "rect should draw top edge");
+    require(leftEdge.r == 255 && leftEdge.g == 0 && leftEdge.b == 0, "rect should draw left edge");
+    require(interior.r == 0 && interior.g == 0 && interior.b == 0, "rect should not fill interior");
+
+    PNGImage filled(12, 12, Color(0, 0, 0));
+    Drawable dFill(filled);
+    dFill.fillRect(2, 3, 6, 4, Color(0, 255, 0));
+    const Color inside = filled.getPixel(4, 5);
+    const Color outside = filled.getPixel(1, 2);
+    require(inside.r == 0 && inside.g == 255 && inside.b == 0, "fillRect should fill pixels in bounds");
+    require(outside.r == 0 && outside.g == 0 && outside.b == 0, "fillRect should not affect outside pixels");
+}
+
 void testRasterResizeFilters() {
     PNGImage src(2, 2, Color(0, 0, 0));
     src.setPixel(0, 0, Color(0, 0, 0));
@@ -468,6 +489,7 @@ int main() {
         testLayeredSmileyMatchesDirect();
         testLayerMaskVisibilityControl();
         testLayerMaskCanBeCleared();
+        testDrawableRectAndFillRect();
         testRasterResizeFilters();
         testEffectsOnRasterImage();
         testEffectsOnLayerImageBuffer();

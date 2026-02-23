@@ -12,6 +12,8 @@ public:
 
     void fill(const Color& color);
     void line(int x0, int y0, int x1, int y1, const Color& color);
+    void rect(int x, int y, int width, int height, const Color& color);
+    void fillRect(int x, int y, int width, int height, const Color& color);
     void circle(int cx, int cy, int radius, const Color& color);
     void fillCircle(int cx, int cy, int radius, const Color& color);
     void arc(int cx, int cy, int radius, float startRadians, float endRadians, const Color& color);

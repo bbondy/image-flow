@@ -1742,6 +1742,38 @@ void applyOperation(Document& document, const std::string& opSpec) {
         return;
     }
 
+    if (action == "draw-rect") {
+        if (kv.find("path") == kv.end() || kv.find("x") == kv.end() || kv.find("y") == kv.end() ||
+            kv.find("width") == kv.end() || kv.find("height") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-rect requires path= x= y= width= height= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.rect(std::stoi(kv.at("x")), std::stoi(kv.at("y")),
+                      std::stoi(kv.at("width")), std::stoi(kv.at("height")),
+                      Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    if (action == "draw-fill-rect") {
+        if (kv.find("path") == kv.end() || kv.find("x") == kv.end() || kv.find("y") == kv.end() ||
+            kv.find("width") == kv.end() || kv.find("height") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-fill-rect requires path= x= y= width= height= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.fillRect(std::stoi(kv.at("x")), std::stoi(kv.at("y")),
+                          std::stoi(kv.at("width")), std::stoi(kv.at("height")),
+                          Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
     if (action == "draw-circle") {
         if (kv.find("path") == kv.end() || kv.find("cx") == kv.end() || kv.find("cy") == kv.end() ||
             kv.find("radius") == kv.end() || kv.find("rgba") == kv.end()) {
