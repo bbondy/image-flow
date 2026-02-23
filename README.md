@@ -1,81 +1,147 @@
 # image-flow
 
-`image-flow` is a C++ image toolkit with a small raster API, codec support, and a layered compositor.  
-The project builds without external image-processing libraries.
+`image-flow` is a C++ image toolkit with raster codecs, a layered compositor, and a deterministic CLI ops engine for procedural image editing.
 
 ## Features
 - BMP/PNG/JPG/GIF encode and decode
-- WebP encode and decode via `cwebp`/`dwebp` command-line tools (optional)
-- Drawing primitives (`line`, `circle`, `arc`, `fill`, `fillCircle`)
-- RGBA layer compositing with blend modes
-- Per-layer masks
-- Layer groups with nested stack traversal
-- `.iflow` project serialization for preserving full layer stacks
-- Unit tests covering codecs, layering, masks, groups, and serialization
+- WebP encode and decode via `cwebp` and `dwebp` tooling (optional)
+- Layer and group compositing with transforms, masks, and blend modes
+- IFLOW project format for full layer-stack serialization
+- CLI ops pipeline for reproducible edits from shell scripts
+- Procedural drawing, filtering, color grading, texturing, and geometry ops
 
 ## Build
 ```bash
 make
 ```
 
-## CLI
+Binaries:
+- `build/bin/image_flow`
+- `build/bin/generate_samples`
+- `build/bin/tests`
+
+## CLI Commands
 ```bash
 ./build/bin/image_flow help
 ```
 
-Main commands:
-- `./build/bin/image_flow new --width <w> --height <h> --out <project.iflow>`
-- `./build/bin/image_flow new --from-image <file> [--fit <w>x<h>] --out <project.iflow>`
-- `./build/bin/image_flow info --in <project.iflow>`
-- `./build/bin/image_flow render --in <project.iflow> --out <image.{png|bmp|jpg|gif|webp|svg}>`
-- `./build/bin/image_flow ops --in <project.iflow> --out <project.iflow> --op "<action key=value ...>" [--op ...] [--render <image.png>]`
-- `./build/bin/image_flow ops --in <project.iflow> --out <project.iflow> --ops-file <ops.txt> [--render <image.png>]`
-- `cat ops.txt | ./build/bin/image_flow ops --in <project.iflow> --out <project.iflow> --stdin`
+- `image_flow new --width <w> --height <h> --out <project.iflow>`
+- `image_flow new --from-image <file> [--fit <w>x<h>] --out <project.iflow>`
+- `image_flow info --in <project.iflow>`
+- `image_flow render --in <project.iflow> --out <image.{png|bmp|jpg|gif|webp|svg}>`
+- `image_flow ops --in <project.iflow> --out <project.iflow> --op "<action key=value ...>" [--op ...]`
+- `image_flow ops --in <project.iflow> --out <project.iflow> --ops-file <ops.txt>`
+- `cat ops.txt | image_flow ops --in <project.iflow> --out <project.iflow> --stdin`
 
-### IFLOW Ops
-`image_flow ops` applies deterministic edits to an IFLOW document. Useful actions include:
-- `add-layer`, `add-group`
+## Blend Modes
+- `normal`
+- `multiply`
+- `screen`
+- `overlay`
+- `darken`
+- `lighten`
+- `add`
+- `subtract`
+- `difference`
+- `color-dodge`
+
+## IFLOW Ops
+### Structure
+- `add-layer`
+- `add-group`
 - `add-grid-layers`
-- `set-layer`, `set-group`
-- `set-transform`, `concat-transform`, `clear-transform`
-- `apply-effect` (`grayscale`, `sepia`, `invert`, `threshold`)
-- `import-image`, `resize-layer`
-- `gradient-layer` (`linear` or `radial` procedural fill)
-- `checker-layer` (procedural checker/stripe fill)
-- `noise-layer` (seeded noise perturbation)
-- `replace-color` (soft tolerance-based remapping)
-- `channel-mix` (3x3 RGB matrix)
-- `draw-fill`, `draw-line`, `draw-circle`, `draw-fill-circle`, `draw-arc` (on image or mask target)
-- `mask-enable`, `mask-clear`, `mask-set-pixel`
-- `fill-layer`, `set-pixel`
+- `set-layer`
+- `set-group`
+- `import-image`
+- `resize-layer`
 
-Example:
+### Transform
+- `set-transform`
+- `concat-transform`
+- `clear-transform`
+
+`set-transform` and `concat-transform` support:
+- `matrix=a,b,c,d,tx,ty`
+- or composed params: `translate=x,y` `scale=s|sx,sy` `skew=degx,degy` `rotate=deg` `pivot=x,y`
+
+### Drawing
+- `draw-fill`
+- `draw-line`
+- `draw-circle`
+- `draw-fill-circle`
+- `draw-arc`
+
+All draw ops support `target=image|mask`.
+
+### Masks and Pixels
+- `mask-enable`
+- `mask-clear`
+- `mask-set-pixel`
+- `fill-layer`
+- `set-pixel`
+
+### Procedural and Noise
+- `gradient-layer` (`linear` or `radial`)
+- `checker-layer`
+- `noise-layer`
+- `fractal-noise`
+- `hatch`
+
+### Color and Tone
+- `apply-effect effect=grayscale|sepia|invert|threshold`
+- `replace-color`
+- `channel-mix` (3x3 RGB matrix)
+- `levels`
+- `gamma`
+- `curves`
+
+### Filtering and Morphology
+- `gaussian-blur`
+- `edge-detect method=sobel|canny`
+- `morphology op=erode|dilate`
+
+## Example Ops Workflow
 ```bash
-./build/bin/image_flow new --from-image samples/tahoe200-finish.webp --fit 1200x800 --out build/output/images/demo.iflow
+./build/bin/image_flow new --from-image samples/tahoe200-finish.webp --fit 1400x900 --out build/output/images/demo.iflow
+
 ./build/bin/image_flow ops \
   --in build/output/images/demo.iflow \
   --out build/output/images/demo.iflow \
-  --op "add-grid-layers rows=4 cols=6 border=10 opacity=0.62 fills=255,80,80,190;255,170,40,190;240,240,70,190;100,210,120,190;70,190,230,190;110,130,255,190;185,110,255,190;255,105,195,190 blends=overlay;screen;lighten;difference" \
+  --op "add-layer name=Sketch width=1400 height=900 fill=0,0,0,0" \
+  --op "import-image path=/1 file=samples/tahoe200-finish.webp" \
+  --op "apply-effect path=/1 effect=grayscale" \
+  --op "apply-effect path=/1 effect=invert" \
+  --op "gaussian-blur path=/1 radius=8 sigma=3.6" \
+  --op "set-layer path=/1 blend=color-dodge opacity=0.95" \
   --render build/output/images/demo.png
 ```
+
+## Sample Scripts
+Run one script:
+```bash
+./sample_scripts/iflow_pencil_sketch_example.sh
+```
+
+Run all scripts:
+```bash
+./sample_scripts/run_all.sh
+# or
+make run-scripts
+```
+
+Current sample scripts:
+- `sample_scripts/iflow_ops_example.sh`
+- `sample_scripts/iflow_orbital_wireframe_example.sh`
+- `sample_scripts/iflow_mask_etch_example.sh`
+- `sample_scripts/iflow_chroma_tunnel_example.sh`
+- `sample_scripts/iflow_pencil_sketch_example.sh`
 
 ## Sample Generator
 ```bash
 ./build/bin/generate_samples
 ```
 
-Example script:
-```bash
-./sample_scripts/iflow_ops_example.sh
-./sample_scripts/iflow_aurora_glitch_example.sh
-./sample_scripts/iflow_kaleido_gridstorm_example.sh
-./sample_scripts/iflow_neon_shards_example.sh
-./sample_scripts/iflow_orbital_wireframe_example.sh
-./sample_scripts/iflow_mask_etch_example.sh
-./sample_scripts/iflow_chroma_tunnel_example.sh
-```
-
-## Run Tests
+## Tests
 ```bash
 make test
 ```
