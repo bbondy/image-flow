@@ -697,6 +697,24 @@ void testCLIRejectsInvalidNumericInput() {
     require(runCLIArgs({"image_flow", "new", "--width", "3", "--height", "2", "--out", goodOut}) == 0,
             "CLI should accept valid integer width/height");
 }
+
+void testCLIOpSupportsQuotedValues() {
+    const std::string testOutDir = "build/output/test-images";
+    std::filesystem::create_directories(testOutDir);
+    const std::string outPath = testOutDir + "/quoted-values.iflow";
+
+    require(runCLIArgs({"image_flow", "ops",
+                        "--width", "2",
+                        "--height", "1",
+                        "--out", outPath,
+                        "--op", "add-layer parent=/ name=\"Layer One\" width=2 height=1 fill=10,20,30,255"}) == 0,
+            "CLI should allow quoted values in --op specs");
+
+    const Document document = loadDocumentIFLOW(outPath);
+    require(document.nodeCount() == 1, "Quoted-value op should create one layer");
+    require(document.node(0).isLayer(), "Quoted-value op should create a layer node");
+    require(document.node(0).asLayer().name() == "Layer One", "Quoted layer name should roundtrip correctly");
+}
 } // namespace
 
 int main() {
@@ -730,6 +748,7 @@ int main() {
         testGroupedLayerOpacityAffectsComposite();
         testIFLOWSerializationRoundtripPreservesStack();
         testCLIRejectsInvalidNumericInput();
+        testCLIOpSupportsQuotedValues();
 
         std::cout << "All tests passed\n";
         return 0;

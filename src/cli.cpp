@@ -230,14 +230,54 @@ void printGroupInfo(const LayerGroup& group, const std::string& indent) {
     }
 }
 
-std::vector<std::string> splitWhitespace(const std::string& text) {
-    std::istringstream in(text);
-    std::vector<std::string> parts;
-    std::string token;
-    while (in >> token) {
-        parts.push_back(token);
+std::vector<std::string> tokenizeOpSpec(const std::string& text) {
+    std::vector<std::string> tokens;
+    std::string current;
+    char quote = '\0';
+    bool escaping = false;
+
+    for (char ch : text) {
+        if (escaping) {
+            current.push_back(ch);
+            escaping = false;
+            continue;
+        }
+        if (ch == '\\') {
+            escaping = true;
+            continue;
+        }
+        if (quote != '\0') {
+            if (ch == quote) {
+                quote = '\0';
+            } else {
+                current.push_back(ch);
+            }
+            continue;
+        }
+        if (ch == '"' || ch == '\'') {
+            quote = ch;
+            continue;
+        }
+        if (std::isspace(static_cast<unsigned char>(ch))) {
+            if (!current.empty()) {
+                tokens.push_back(current);
+                current.clear();
+            }
+            continue;
+        }
+        current.push_back(ch);
     }
-    return parts;
+
+    if (escaping) {
+        throw std::runtime_error("Invalid op: trailing escape character");
+    }
+    if (quote != '\0') {
+        throw std::runtime_error("Invalid op: unterminated quoted value");
+    }
+    if (!current.empty()) {
+        tokens.push_back(current);
+    }
+    return tokens;
 }
 
 std::vector<std::string> splitByChar(const std::string& text, char delimiter) {
@@ -1726,7 +1766,7 @@ bool tryApplyLambdaDispatchedOperation(const std::string& action,
 }
 
 void applyOperation(Document& document, const std::string& opSpec, const std::function<void(const std::string&)>& emitOutput) {
-    const std::vector<std::string> tokens = splitWhitespace(opSpec);
+    const std::vector<std::string> tokens = tokenizeOpSpec(opSpec);
     if (tokens.empty()) {
         throw std::runtime_error("Empty --op value");
     }
