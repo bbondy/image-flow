@@ -6,12 +6,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace {
 constexpr double kPi = 3.14159265358979323846;
+constexpr std::size_t kMaxImagePixels = 100000000;
 
 constexpr std::array<int, 64> kZigZag = {
     0,  1,  8, 16, 9,  2,  3, 10,
@@ -47,6 +49,17 @@ constexpr std::array<std::uint8_t, 17> kDcLumaBits = {
     0x00, 0x00, 0x01, 0x05, 0x01, 0x01, 0x01, 0x01,
     0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00};
+
+void validateJPGDimensions(int width, int height) {
+    if (width <= 0 || height <= 0) {
+        throw std::runtime_error("Invalid JPEG dimensions");
+    }
+    const std::size_t w = static_cast<std::size_t>(width);
+    const std::size_t h = static_cast<std::size_t>(height);
+    if (w > std::numeric_limits<std::size_t>::max() / h || (w * h) > kMaxImagePixels) {
+        throw std::runtime_error("Unsupported JPEG dimensions");
+    }
+}
 
 constexpr std::array<std::uint8_t, 12> kDcLumaVals = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
@@ -827,7 +840,8 @@ JPGImage JPGImage::load(const std::string& filename) {
             height = (static_cast<int>(bytes[segStart + 1]) << 8) | bytes[segStart + 2];
             width = (static_cast<int>(bytes[segStart + 3]) << 8) | bytes[segStart + 4];
             compCount = bytes[segStart + 5];
-            if (width <= 0 || height <= 0 || compCount != 3) {
+            validateJPGDimensions(width, height);
+            if (compCount != 3) {
                 throw std::runtime_error("Only 3-component JPEG is supported");
             }
             if (segDataLen < static_cast<std::size_t>(6 + compCount * 3)) {
@@ -885,7 +899,7 @@ JPGImage JPGImage::load(const std::string& filename) {
         pos = segStart + segDataLen;
     }
 
-    if (width <= 0 || height <= 0 || scanData.empty()) {
+    if (scanData.empty()) {
         throw std::runtime_error("Incomplete JPEG file");
     }
     if (scanCount != 3) {

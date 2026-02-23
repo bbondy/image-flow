@@ -7,8 +7,28 @@
 #include <stdexcept>
 
 namespace {
+constexpr std::size_t kMaxImagePixels = 100000000;
+constexpr std::uint32_t kMaxIFLOWStringBytes = 1u << 20;
+constexpr std::uint32_t kMaxIFLOWNodes = 1000000;
+
 std::size_t pixelIndex(int x, int y, int width) {
     return static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x);
+}
+
+std::size_t checkedPixelCount(int width, int height, const char* context) {
+    if (width <= 0 || height <= 0) {
+        throw std::invalid_argument(std::string(context) + " dimensions must be positive");
+    }
+    const std::size_t w = static_cast<std::size_t>(width);
+    const std::size_t h = static_cast<std::size_t>(height);
+    if (w > std::numeric_limits<std::size_t>::max() / h) {
+        throw std::invalid_argument(std::string(context) + " dimensions overflow pixel count");
+    }
+    const std::size_t pixels = w * h;
+    if (pixels > kMaxImagePixels) {
+        throw std::invalid_argument(std::string(context) + " exceeds maximum pixel count");
+    }
+    return pixels;
 }
 
 float clamp01(float v) {
@@ -219,10 +239,8 @@ void compositeNodeOnto(ImageBuffer& out, const LayerNode& node, const Transform2
 ImageBuffer::ImageBuffer() : m_width(0), m_height(0) {}
 
 ImageBuffer::ImageBuffer(int width, int height, const PixelRGBA8& fill) : m_width(width), m_height(height) {
-    if (width <= 0 || height <= 0) {
-        throw std::invalid_argument("ImageBuffer dimensions must be positive");
-    }
-    m_pixels.assign(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), fill);
+    const std::size_t pixels = checkedPixelCount(width, height, "ImageBuffer");
+    m_pixels.assign(pixels, fill);
 }
 
 int ImageBuffer::width() const {
@@ -712,6 +730,9 @@ void writeString(std::ostream& out, const std::string& value) {
 
 std::string readString(std::istream& in) {
     const std::uint32_t length = readBinary<std::uint32_t>(in);
+    if (length > kMaxIFLOWStringBytes) {
+        throw std::runtime_error("IFLOW string too large");
+    }
     std::string value(length, '\0');
     if (length > 0) {
         in.read(value.data(), static_cast<std::streamsize>(length));
@@ -744,9 +765,7 @@ void writeImageBuffer(std::ostream& out, const ImageBuffer& image) {
 ImageBuffer readImageBuffer(std::istream& in) {
     const std::int32_t width = readBinary<std::int32_t>(in);
     const std::int32_t height = readBinary<std::int32_t>(in);
-    if (width <= 0 || height <= 0) {
-        throw std::runtime_error("Invalid IFLOW image dimensions");
-    }
+    checkedPixelCount(width, height, "IFLOW image");
 
     ImageBuffer image(width, height, PixelRGBA8(0, 0, 0, 0));
     for (int y = 0; y < height; ++y) {
@@ -868,6 +887,9 @@ LayerGroup readGroup(std::istream& in, std::uint32_t version) {
     }
 
     const std::uint32_t nodeCount = readBinary<std::uint32_t>(in);
+    if (nodeCount > kMaxIFLOWNodes) {
+        throw std::runtime_error("IFLOW group has too many nodes");
+    }
     for (std::uint32_t i = 0; i < nodeCount; ++i) {
         const std::uint8_t nodeType = readBinary<std::uint8_t>(in);
         if (nodeType == 0) {
@@ -926,9 +948,7 @@ Document loadDocumentIFLOW(const std::string& path) {
 
     const std::int32_t width = readBinary<std::int32_t>(in);
     const std::int32_t height = readBinary<std::int32_t>(in);
-    if (width <= 0 || height <= 0) {
-        throw std::runtime_error("Invalid IFLOW document dimensions");
-    }
+    checkedPixelCount(width, height, "IFLOW document");
 
     Document document(width, height);
     document.rootGroup() = readGroup(in, version);

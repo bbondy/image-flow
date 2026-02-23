@@ -676,6 +676,16 @@ void testIFLOWSerializationRoundtripPreservesStack() {
     }
 }
 
+void testImageBufferRejectsExcessiveDimensions() {
+    bool threw = false;
+    try {
+        (void)ImageBuffer(20000, 20000, PixelRGBA8(0, 0, 0, 0));
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    require(threw, "ImageBuffer should reject dimensions that exceed pixel limits");
+}
+
 void testCLIRejectsInvalidNumericInput() {
     const std::string testOutDir = "build/output/test-images";
     std::filesystem::create_directories(testOutDir);
@@ -789,6 +799,7 @@ int main() {
         testGroupedLayerOffsetAndVisibility();
         testGroupedLayerOpacityAffectsComposite();
         testIFLOWSerializationRoundtripPreservesStack();
+        testImageBufferRejectsExcessiveDimensions();
         testCLIRejectsInvalidNumericInput();
         testCLIOpSupportsQuotedValues();
         testCLIRejectsConflictingFlagCombinations();

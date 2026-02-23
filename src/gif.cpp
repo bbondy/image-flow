@@ -5,14 +5,28 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace {
+constexpr std::size_t kMaxImagePixels = 100000000;
+
 std::size_t pixelIndex(int x, int y, int width) {
     return static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x);
+}
+
+void validateGIFDimensions(int width, int height, const char* context) {
+    if (width <= 0 || height <= 0) {
+        throw std::runtime_error(std::string("Invalid ") + context + " dimensions");
+    }
+    const std::size_t w = static_cast<std::size_t>(width);
+    const std::size_t h = static_cast<std::size_t>(height);
+    if (w > std::numeric_limits<std::size_t>::max() / h || (w * h) > kMaxImagePixels) {
+        throw std::runtime_error(std::string("Unsupported ") + context + " dimensions");
+    }
 }
 
 void writeU16LE(std::vector<std::uint8_t>& out, std::uint16_t value) {
@@ -417,9 +431,7 @@ GIFImage GIFImage::load(const std::string& filename) {
     const std::uint8_t lsdPacked = bytes[pos + 4];
     pos += 7;
 
-    if (canvasW <= 0 || canvasH <= 0) {
-        throw std::runtime_error("Invalid GIF dimensions");
-    }
+    validateGIFDimensions(canvasW, canvasH, "GIF");
 
     std::vector<Color> globalPalette;
     if ((lsdPacked & 0x80) != 0) {
@@ -467,9 +479,7 @@ GIFImage GIFImage::load(const std::string& filename) {
         const std::uint8_t idPacked = bytes[pos + 8];
         pos += 9;
 
-        if (imageW <= 0 || imageH <= 0) {
-            throw std::runtime_error("Invalid GIF image size");
-        }
+        validateGIFDimensions(imageW, imageH, "GIF image");
 
         std::vector<Color> palette = globalPalette;
         if ((idPacked & 0x80) != 0) {

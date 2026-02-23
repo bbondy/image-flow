@@ -4,15 +4,28 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace {
 constexpr std::uint8_t kPNGSignature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+constexpr std::size_t kMaxImagePixels = 100000000;
 
 std::size_t pixelIndex(int x, int y, int width) {
     return static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x);
+}
+
+void validatePNGDimensions(int width, int height) {
+    if (width <= 0 || height <= 0) {
+        throw std::runtime_error("Invalid PNG dimensions");
+    }
+    const std::size_t w = static_cast<std::size_t>(width);
+    const std::size_t h = static_cast<std::size_t>(height);
+    if (w > std::numeric_limits<std::size_t>::max() / h || (w * h) > kMaxImagePixels) {
+        throw std::runtime_error("Unsupported PNG dimensions");
+    }
 }
 
 std::uint32_t readU32BE(const std::vector<std::uint8_t>& bytes, std::size_t offset) {
@@ -415,9 +428,7 @@ PNGImage PNGImage::load(const std::string& filename) {
             const std::uint8_t filterMethod = bytes[pos + 11];
             interlace = bytes[pos + 12];
 
-            if (width <= 0 || height <= 0) {
-                throw std::runtime_error("Invalid PNG dimensions");
-            }
+            validatePNGDimensions(width, height);
             if (bitDepth != 8 || colorType != 2) {
                 throw std::runtime_error("Only 24-bit RGB PNG is supported");
             }
