@@ -34,6 +34,18 @@ public:
         return t;
     }
 
+    static Transform2D scaling(double sx, double sy, double pivotX = 0.0, double pivotY = 0.0) {
+        Transform2D t;
+        t.scale(sx, sy, pivotX, pivotY);
+        return t;
+    }
+
+    static Transform2D shearing(double shx, double shy, double pivotX = 0.0, double pivotY = 0.0) {
+        Transform2D t;
+        t.shear(shx, shy, pivotX, pivotY);
+        return t;
+    }
+
     Transform2D& setIdentity() {
         m_a = 1.0;
         m_b = 0.0;
@@ -60,6 +72,16 @@ public:
         return setRotationRadians(degreesToRadians(degrees), pivotX, pivotY);
     }
 
+    Transform2D& setScale(double sx, double sy, double pivotX = 0.0, double pivotY = 0.0) {
+        setIdentity();
+        return scale(sx, sy, pivotX, pivotY);
+    }
+
+    Transform2D& setShear(double shx, double shy, double pivotX = 0.0, double pivotY = 0.0) {
+        setIdentity();
+        return shear(shx, shy, pivotX, pivotY);
+    }
+
     Transform2D& translate(double dx, double dy) {
         return (*this) *= translation(dx, dy);
     }
@@ -81,6 +103,32 @@ public:
 
     Transform2D& rotateDegrees(double degrees, double pivotX = 0.0, double pivotY = 0.0) {
         return rotateRadians(degreesToRadians(degrees), pivotX, pivotY);
+    }
+
+    Transform2D& scale(double sx, double sy, double pivotX = 0.0, double pivotY = 0.0) {
+        Transform2D sc = fromMatrix(sx, 0.0, 0.0, sy, 0.0, 0.0);
+        if (pivotX != 0.0 || pivotY != 0.0) {
+            Transform2D pre = translation(pivotX, pivotY);
+            Transform2D post = translation(-pivotX, -pivotY);
+            (*this) *= pre;
+            (*this) *= sc;
+            (*this) *= post;
+            return *this;
+        }
+        return (*this) *= sc;
+    }
+
+    Transform2D& shear(double shx, double shy, double pivotX = 0.0, double pivotY = 0.0) {
+        Transform2D sh = fromMatrix(1.0, shy, shx, 1.0, 0.0, 0.0);
+        if (pivotX != 0.0 || pivotY != 0.0) {
+            Transform2D pre = translation(pivotX, pivotY);
+            Transform2D post = translation(-pivotX, -pivotY);
+            (*this) *= pre;
+            (*this) *= sh;
+            (*this) *= post;
+            return *this;
+        }
+        return (*this) *= sh;
     }
 
     bool isIdentity(double eps = 1e-9) const {

@@ -1,6 +1,7 @@
 #include "cli.h"
 
 #include "bmp.h"
+#include "drawable.h"
 #include "effects.h"
 #include "gif.h"
 #include "jpg.h"
@@ -11,12 +12,15 @@
 #include "webp.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdint>
+#include <cmath>
 #include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -95,6 +99,41 @@ void copyBufferToImage(const ImageBuffer& source, Image& destination) {
         }
     }
 }
+
+class BufferImageView final : public Image {
+public:
+    explicit BufferImageView(ImageBuffer& buffer, std::uint8_t drawAlpha = 255, bool forceAlpha = true)
+        : m_buffer(buffer), m_lastColor(0, 0, 0), m_drawAlpha(drawAlpha), m_forceAlpha(forceAlpha) {}
+
+    int width() const override { return m_buffer.width(); }
+    int height() const override { return m_buffer.height(); }
+    bool inBounds(int x, int y) const override { return m_buffer.inBounds(x, y); }
+
+    const Color& getPixel(int x, int y) const override {
+        if (!m_buffer.inBounds(x, y)) {
+            m_lastColor = Color(0, 0, 0);
+            return m_lastColor;
+        }
+        const PixelRGBA8& px = m_buffer.getPixel(x, y);
+        m_lastColor = Color(px.r, px.g, px.b);
+        return m_lastColor;
+    }
+
+    void setPixel(int x, int y, const Color& color) override {
+        if (!m_buffer.inBounds(x, y)) {
+            return;
+        }
+        const PixelRGBA8 src = m_buffer.getPixel(x, y);
+        const std::uint8_t alpha = m_forceAlpha ? m_drawAlpha : src.a;
+        m_buffer.setPixel(x, y, PixelRGBA8(color.r, color.g, color.b, alpha));
+    }
+
+private:
+    ImageBuffer& m_buffer;
+    mutable Color m_lastColor;
+    std::uint8_t m_drawAlpha;
+    bool m_forceAlpha;
+};
 
 bool saveCompositeByExtension(const ImageBuffer& composite, const std::string& outPath) {
     const std::string ext = extensionLower(outPath);
@@ -234,6 +273,251 @@ PixelRGBA8 parseRGBA(const std::string& text, bool allowRgb = false) {
                       static_cast<std::uint8_t>(std::stoi(parts[1])),
                       static_cast<std::uint8_t>(std::stoi(parts[2])),
                       static_cast<std::uint8_t>(std::stoi(parts[3])));
+}
+
+float clamp01(float value) {
+    return std::max(0.0f, std::min(1.0f, value));
+}
+
+std::uint8_t clampByte(int value) {
+    if (value < 0) {
+        return 0;
+    }
+    if (value > 255) {
+        return 255;
+    }
+    return static_cast<std::uint8_t>(value);
+}
+
+PixelRGBA8 lerpPixel(const PixelRGBA8& a, const PixelRGBA8& b, float t) {
+    const float clamped = clamp01(t);
+    const float inv = 1.0f - clamped;
+    return PixelRGBA8(
+        clampByte(static_cast<int>(std::lround(inv * static_cast<float>(a.r) + clamped * static_cast<float>(b.r)))),
+        clampByte(static_cast<int>(std::lround(inv * static_cast<float>(a.g) + clamped * static_cast<float>(b.g)))),
+        clampByte(static_cast<int>(std::lround(inv * static_cast<float>(a.b) + clamped * static_cast<float>(b.b)))),
+        clampByte(static_cast<int>(std::lround(inv * static_cast<float>(a.a) + clamped * static_cast<float>(b.a)))));
+}
+
+void applyLinearGradientToLayer(Layer& layer,
+                                const PixelRGBA8& fromColor,
+                                const PixelRGBA8& toColor,
+                                double x0,
+                                double y0,
+                                double x1,
+                                double y1) {
+    ImageBuffer& image = layer.image();
+    const double dx = x1 - x0;
+    const double dy = y1 - y0;
+    const double denom = (dx * dx) + (dy * dy);
+
+    if (denom <= 0.0) {
+        image.fill(fromColor);
+        return;
+    }
+
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const double proj = ((static_cast<double>(x) - x0) * dx + (static_cast<double>(y) - y0) * dy) / denom;
+            const float t = clamp01(static_cast<float>(proj));
+            image.setPixel(x, y, lerpPixel(fromColor, toColor, t));
+        }
+    }
+}
+
+void applyRadialGradientToLayer(Layer& layer,
+                                const PixelRGBA8& innerColor,
+                                const PixelRGBA8& outerColor,
+                                double cx,
+                                double cy,
+                                double radius) {
+    if (radius <= 0.0) {
+        throw std::runtime_error("gradient-layer radial radius must be > 0");
+    }
+
+    ImageBuffer& image = layer.image();
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const double dx = static_cast<double>(x) - cx;
+            const double dy = static_cast<double>(y) - cy;
+            const double dist = std::sqrt((dx * dx) + (dy * dy));
+            const float t = clamp01(static_cast<float>(dist / radius));
+            image.setPixel(x, y, lerpPixel(innerColor, outerColor, t));
+        }
+    }
+}
+
+void applyCheckerToLayer(Layer& layer,
+                         int cellWidth,
+                         int cellHeight,
+                         const PixelRGBA8& colorA,
+                         const PixelRGBA8& colorB,
+                         int offsetX,
+                         int offsetY) {
+    if (cellWidth <= 0 || cellHeight <= 0) {
+        throw std::runtime_error("checker-layer requires cell_width>0 and cell_height>0");
+    }
+
+    ImageBuffer& image = layer.image();
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const int shiftedX = x + offsetX;
+            const int shiftedY = y + offsetY;
+            const int cellX = static_cast<int>(std::floor(static_cast<double>(shiftedX) / static_cast<double>(cellWidth)));
+            const int cellY = static_cast<int>(std::floor(static_cast<double>(shiftedY) / static_cast<double>(cellHeight)));
+            const bool useA = ((cellX + cellY) % 2) == 0;
+            image.setPixel(x, y, useA ? colorA : colorB);
+        }
+    }
+}
+
+void applyNoiseToLayer(Layer& layer,
+                       std::uint32_t seed,
+                       float amount,
+                       bool monochrome,
+                       bool affectAlpha) {
+    const float mix = clamp01(amount);
+    if (mix <= 0.0f) {
+        return;
+    }
+
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> jitter(-128, 128);
+    ImageBuffer& image = layer.image();
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const PixelRGBA8 src = image.getPixel(x, y);
+            const int baseNoise = jitter(rng);
+            const int rNoise = monochrome ? baseNoise : jitter(rng);
+            const int gNoise = monochrome ? baseNoise : jitter(rng);
+            const int bNoise = monochrome ? baseNoise : jitter(rng);
+            const int aNoise = monochrome ? baseNoise : jitter(rng);
+
+            const int outR = static_cast<int>(std::lround(static_cast<float>(src.r) + mix * static_cast<float>(rNoise)));
+            const int outG = static_cast<int>(std::lround(static_cast<float>(src.g) + mix * static_cast<float>(gNoise)));
+            const int outB = static_cast<int>(std::lround(static_cast<float>(src.b) + mix * static_cast<float>(bNoise)));
+            const int outA = affectAlpha
+                                 ? static_cast<int>(std::lround(static_cast<float>(src.a) + mix * static_cast<float>(aNoise)))
+                                 : static_cast<int>(src.a);
+
+            image.setPixel(x, y, PixelRGBA8(clampByte(outR), clampByte(outG), clampByte(outB), clampByte(outA)));
+        }
+    }
+}
+
+double rgbDistance(const PixelRGBA8& a, const PixelRGBA8& b) {
+    const double dr = static_cast<double>(a.r) - static_cast<double>(b.r);
+    const double dg = static_cast<double>(a.g) - static_cast<double>(b.g);
+    const double db = static_cast<double>(a.b) - static_cast<double>(b.b);
+    return std::sqrt((dr * dr) + (dg * dg) + (db * db));
+}
+
+void applyReplaceColorToLayer(Layer& layer,
+                              const PixelRGBA8& fromColor,
+                              const PixelRGBA8& toColor,
+                              double tolerance,
+                              double softness,
+                              bool preserveLuma) {
+    const double clampedTolerance = std::max(0.0, tolerance);
+    const double clampedSoftness = std::max(0.0, softness);
+    const double hard = clampedTolerance;
+    const double softEnd = clampedTolerance + clampedSoftness;
+
+    ImageBuffer& image = layer.image();
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const PixelRGBA8 src = image.getPixel(x, y);
+            const double dist = rgbDistance(src, fromColor);
+
+            float mix = 0.0f;
+            if (dist <= hard) {
+                mix = 1.0f;
+            } else if (softEnd > hard && dist < softEnd) {
+                mix = static_cast<float>(1.0 - ((dist - hard) / (softEnd - hard)));
+            }
+
+            if (mix <= 0.0f) {
+                continue;
+            }
+
+            PixelRGBA8 adjusted = toColor;
+            adjusted.a = src.a;
+            if (preserveLuma) {
+                const float srcLuma = 0.299f * static_cast<float>(src.r) +
+                                      0.587f * static_cast<float>(src.g) +
+                                      0.114f * static_cast<float>(src.b);
+                const float dstLuma = 0.299f * static_cast<float>(adjusted.r) +
+                                      0.587f * static_cast<float>(adjusted.g) +
+                                      0.114f * static_cast<float>(adjusted.b);
+                if (dstLuma > 0.0f) {
+                    const float scale = srcLuma / dstLuma;
+                    adjusted.r = clampByte(static_cast<int>(std::lround(scale * static_cast<float>(adjusted.r))));
+                    adjusted.g = clampByte(static_cast<int>(std::lround(scale * static_cast<float>(adjusted.g))));
+                    adjusted.b = clampByte(static_cast<int>(std::lround(scale * static_cast<float>(adjusted.b))));
+                }
+            }
+
+            image.setPixel(x, y, lerpPixel(src, adjusted, mix));
+        }
+    }
+}
+
+void applyChannelMixToLayer(Layer& layer,
+                            const std::array<float, 9>& mixMatrix,
+                            float clampMin,
+                            float clampMax) {
+    const float minV = std::min(clampMin, clampMax);
+    const float maxV = std::max(clampMin, clampMax);
+
+    ImageBuffer& image = layer.image();
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const PixelRGBA8 src = image.getPixel(x, y);
+            const float r = static_cast<float>(src.r);
+            const float g = static_cast<float>(src.g);
+            const float b = static_cast<float>(src.b);
+
+            float outR = mixMatrix[0] * r + mixMatrix[1] * g + mixMatrix[2] * b;
+            float outG = mixMatrix[3] * r + mixMatrix[4] * g + mixMatrix[5] * b;
+            float outB = mixMatrix[6] * r + mixMatrix[7] * g + mixMatrix[8] * b;
+
+            outR = std::max(minV, std::min(maxV, outR));
+            outG = std::max(minV, std::min(maxV, outG));
+            outB = std::max(minV, std::min(maxV, outB));
+
+            image.setPixel(x, y, PixelRGBA8(clampByte(static_cast<int>(std::lround(outR))),
+                                            clampByte(static_cast<int>(std::lround(outG))),
+                                            clampByte(static_cast<int>(std::lround(outB))),
+                                            src.a));
+        }
+    }
+}
+
+void applyInvertToLayer(Layer& layer, bool preserveAlpha) {
+    ImageBuffer& image = layer.image();
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const PixelRGBA8 src = image.getPixel(x, y);
+            image.setPixel(x, y, PixelRGBA8(static_cast<std::uint8_t>(255 - src.r),
+                                            static_cast<std::uint8_t>(255 - src.g),
+                                            static_cast<std::uint8_t>(255 - src.b),
+                                            preserveAlpha ? src.a : static_cast<std::uint8_t>(255 - src.a)));
+        }
+    }
+}
+
+void applyThresholdToLayer(Layer& layer, int threshold, const PixelRGBA8& lo, const PixelRGBA8& hi) {
+    const int t = std::max(0, std::min(255, threshold));
+    ImageBuffer& image = layer.image();
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const PixelRGBA8 src = image.getPixel(x, y);
+            const int luma = static_cast<int>(std::lround(0.299 * static_cast<double>(src.r) +
+                                                          0.587 * static_cast<double>(src.g) +
+                                                          0.114 * static_cast<double>(src.b)));
+            image.setPixel(x, y, luma >= t ? hi : lo);
+        }
+    }
 }
 
 std::vector<std::size_t> parsePathIndices(const std::string& path) {
@@ -465,6 +749,69 @@ void resizeLayer(Layer& layer, int width, int height, ResizeFilter filter) {
     layer.setImageFromRaster(resized, 255);
 }
 
+ImageBuffer& resolveDrawTargetBuffer(Layer& layer, const std::unordered_map<std::string, std::string>& kv) {
+    const std::string target = kv.find("target") == kv.end() ? "image" : toLower(kv.at("target"));
+    if (target == "image") {
+        return layer.image();
+    }
+    if (target == "mask") {
+        if (!layer.hasMask()) {
+            const PixelRGBA8 maskFill = kv.find("mask_fill") == kv.end() ? PixelRGBA8(0, 0, 0, 255) : parseRGBA(kv.at("mask_fill"), true);
+            layer.enableMask(maskFill);
+        }
+        return layer.mask();
+    }
+    throw std::runtime_error("target must be image or mask");
+}
+
+Transform2D buildTransformFromKV(const std::unordered_map<std::string, std::string>& kv) {
+    Transform2D transform;
+    if (kv.find("matrix") != kv.end()) {
+        const std::vector<std::string> parts = splitByChar(kv.at("matrix"), ',');
+        if (parts.size() != 6) {
+            throw std::runtime_error("matrix= expects 6 comma-separated values");
+        }
+        transform = Transform2D::fromMatrix(std::stod(parts[0]), std::stod(parts[1]), std::stod(parts[2]),
+                                            std::stod(parts[3]), std::stod(parts[4]), std::stod(parts[5]));
+        return transform;
+    }
+
+    transform.setIdentity();
+    const std::pair<double, double> pivot = kv.find("pivot") == kv.end()
+                                                ? std::pair<double, double>(0.0, 0.0)
+                                                : parseDoublePair(kv.at("pivot"));
+
+    if (kv.find("translate") != kv.end()) {
+        const std::pair<double, double> t = parseDoublePair(kv.at("translate"));
+        transform.translate(t.first, t.second);
+    }
+
+    if (kv.find("scale") != kv.end()) {
+        const std::vector<std::string> parts = splitByChar(kv.at("scale"), ',');
+        if (parts.size() == 1) {
+            const double s = std::stod(parts[0]);
+            transform.scale(s, s, pivot.first, pivot.second);
+        } else if (parts.size() == 2) {
+            transform.scale(std::stod(parts[0]), std::stod(parts[1]), pivot.first, pivot.second);
+        } else {
+            throw std::runtime_error("scale= expects s or sx,sy");
+        }
+    }
+
+    if (kv.find("skew") != kv.end()) {
+        const std::pair<double, double> skewDegrees = parseDoublePair(kv.at("skew"));
+        const double shx = std::tan(skewDegrees.first * 3.14159265358979323846 / 180.0);
+        const double shy = std::tan(skewDegrees.second * 3.14159265358979323846 / 180.0);
+        transform.shear(shx, shy, pivot.first, pivot.second);
+    }
+
+    if (kv.find("rotate") != kv.end()) {
+        transform.rotateDegrees(std::stod(kv.at("rotate")), pivot.first, pivot.second);
+    }
+
+    return transform;
+}
+
 void applyOperation(Document& document, const std::string& opSpec) {
     const std::vector<std::string> tokens = splitWhitespace(opSpec);
     if (tokens.empty()) {
@@ -601,32 +948,38 @@ void applyOperation(Document& document, const std::string& opSpec) {
             throw std::runtime_error("set-transform requires path=");
         }
         LayerNode& node = resolveNodePath(document, kv.at("path"));
-        Transform2D transform;
-        if (kv.find("matrix") != kv.end()) {
-            const std::vector<std::string> parts = splitByChar(kv.at("matrix"), ',');
-            if (parts.size() != 6) {
-                throw std::runtime_error("matrix= expects 6 comma-separated values");
-            }
-            transform = Transform2D::fromMatrix(std::stod(parts[0]), std::stod(parts[1]), std::stod(parts[2]),
-                                                std::stod(parts[3]), std::stod(parts[4]), std::stod(parts[5]));
-        } else {
-            transform.setIdentity();
-            if (kv.find("translate") != kv.end()) {
-                const std::pair<double, double> t = parseDoublePair(kv.at("translate"));
-                transform.translate(t.first, t.second);
-            }
-            if (kv.find("rotate") != kv.end()) {
-                std::pair<double, double> pivot(0.0, 0.0);
-                if (kv.find("pivot") != kv.end()) {
-                    pivot = parseDoublePair(kv.at("pivot"));
-                }
-                transform.rotateDegrees(std::stod(kv.at("rotate")), pivot.first, pivot.second);
-            }
-        }
+        const Transform2D transform = buildTransformFromKV(kv);
         if (node.isLayer()) {
             node.asLayer().transform() = transform;
         } else {
             node.asGroup().transform() = transform;
+        }
+        return;
+    }
+
+    if (action == "concat-transform") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("concat-transform requires path=");
+        }
+        LayerNode& node = resolveNodePath(document, kv.at("path"));
+        const Transform2D transform = buildTransformFromKV(kv);
+        if (node.isLayer()) {
+            node.asLayer().transform() *= transform;
+        } else {
+            node.asGroup().transform() *= transform;
+        }
+        return;
+    }
+
+    if (action == "clear-transform") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("clear-transform requires path=");
+        }
+        LayerNode& node = resolveNodePath(document, kv.at("path"));
+        if (node.isLayer()) {
+            node.asLayer().transform().setIdentity();
+        } else {
+            node.asGroup().transform().setIdentity();
         }
         return;
     }
@@ -646,7 +999,205 @@ void applyOperation(Document& document, const std::string& opSpec) {
             applySepia(layer, strength);
             return;
         }
+        if (effect == "invert") {
+            const bool preserveAlpha = kv.find("preserve_alpha") == kv.end() ? true : parseBoolFlag(kv.at("preserve_alpha"));
+            applyInvertToLayer(layer, preserveAlpha);
+            return;
+        }
+        if (effect == "threshold") {
+            const int threshold = kv.find("threshold") == kv.end() ? 128 : std::stoi(kv.at("threshold"));
+            const PixelRGBA8 lo = kv.find("lo") == kv.end() ? PixelRGBA8(0, 0, 0, 255) : parseRGBA(kv.at("lo"), true);
+            const PixelRGBA8 hi = kv.find("hi") == kv.end() ? PixelRGBA8(255, 255, 255, 255) : parseRGBA(kv.at("hi"), true);
+            applyThresholdToLayer(layer, threshold, lo, hi);
+            return;
+        }
         throw std::runtime_error("Unsupported effect: " + effect);
+    }
+
+    if (action == "replace-color") {
+        if (kv.find("path") == kv.end() || kv.find("from") == kv.end() || kv.find("to") == kv.end()) {
+            throw std::runtime_error("replace-color requires path= from= to=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        const PixelRGBA8 fromColor = parseRGBA(kv.at("from"), true);
+        const PixelRGBA8 toColor = parseRGBA(kv.at("to"), true);
+        const double tolerance = kv.find("tolerance") == kv.end() ? 36.0 : std::stod(kv.at("tolerance"));
+        const double softness = kv.find("softness") == kv.end() ? 24.0 : std::stod(kv.at("softness"));
+        const bool preserveLuma = kv.find("preserve_luma") == kv.end() ? true : parseBoolFlag(kv.at("preserve_luma"));
+        applyReplaceColorToLayer(layer, fromColor, toColor, tolerance, softness, preserveLuma);
+        return;
+    }
+
+    if (action == "channel-mix") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("channel-mix requires path=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        const std::array<float, 9> matrix = {
+            kv.find("rr") == kv.end() ? 1.0f : std::stof(kv.at("rr")),
+            kv.find("rg") == kv.end() ? 0.0f : std::stof(kv.at("rg")),
+            kv.find("rb") == kv.end() ? 0.0f : std::stof(kv.at("rb")),
+            kv.find("gr") == kv.end() ? 0.0f : std::stof(kv.at("gr")),
+            kv.find("gg") == kv.end() ? 1.0f : std::stof(kv.at("gg")),
+            kv.find("gb") == kv.end() ? 0.0f : std::stof(kv.at("gb")),
+            kv.find("br") == kv.end() ? 0.0f : std::stof(kv.at("br")),
+            kv.find("bg") == kv.end() ? 0.0f : std::stof(kv.at("bg")),
+            kv.find("bb") == kv.end() ? 1.0f : std::stof(kv.at("bb"))};
+        const float clampMin = kv.find("min") == kv.end() ? 0.0f : std::stof(kv.at("min"));
+        const float clampMax = kv.find("max") == kv.end() ? 255.0f : std::stof(kv.at("max"));
+        applyChannelMixToLayer(layer, matrix, clampMin, clampMax);
+        return;
+    }
+
+    if (action == "draw-fill") {
+        if (kv.find("path") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-fill requires path= and rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.fill(Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    if (action == "draw-line") {
+        if (kv.find("path") == kv.end() || kv.find("x0") == kv.end() || kv.find("y0") == kv.end() ||
+            kv.find("x1") == kv.end() || kv.find("y1") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-line requires path= x0= y0= x1= y1= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.line(std::stoi(kv.at("x0")), std::stoi(kv.at("y0")),
+                      std::stoi(kv.at("x1")), std::stoi(kv.at("y1")),
+                      Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    if (action == "draw-circle") {
+        if (kv.find("path") == kv.end() || kv.find("cx") == kv.end() || kv.find("cy") == kv.end() ||
+            kv.find("radius") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-circle requires path= cx= cy= radius= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.circle(std::stoi(kv.at("cx")), std::stoi(kv.at("cy")), std::stoi(kv.at("radius")),
+                        Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    if (action == "draw-fill-circle") {
+        if (kv.find("path") == kv.end() || kv.find("cx") == kv.end() || kv.find("cy") == kv.end() ||
+            kv.find("radius") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-fill-circle requires path= cx= cy= radius= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.fillCircle(std::stoi(kv.at("cx")), std::stoi(kv.at("cy")), std::stoi(kv.at("radius")),
+                            Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    if (action == "draw-arc") {
+        if (kv.find("path") == kv.end() || kv.find("cx") == kv.end() || kv.find("cy") == kv.end() ||
+            kv.find("radius") == kv.end() || kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-arc requires path= cx= cy= radius= rgba= and start/end");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+
+        float startRadians = 0.0f;
+        float endRadians = 0.0f;
+        if (kv.find("start_rad") != kv.end() && kv.find("end_rad") != kv.end()) {
+            startRadians = std::stof(kv.at("start_rad"));
+            endRadians = std::stof(kv.at("end_rad"));
+        } else if (kv.find("start_deg") != kv.end() && kv.find("end_deg") != kv.end()) {
+            startRadians = static_cast<float>(std::stod(kv.at("start_deg")) * 3.14159265358979323846 / 180.0);
+            endRadians = static_cast<float>(std::stod(kv.at("end_deg")) * 3.14159265358979323846 / 180.0);
+        } else {
+            throw std::runtime_error("draw-arc requires start_rad/end_rad or start_deg/end_deg");
+        }
+
+        drawable.arc(std::stoi(kv.at("cx")), std::stoi(kv.at("cy")), std::stoi(kv.at("radius")),
+                     startRadians, endRadians, Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    if (action == "gradient-layer") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("gradient-layer requires path=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        const std::string type = kv.find("type") == kv.end() ? "linear" : toLower(kv.at("type"));
+        const PixelRGBA8 fromColor = kv.find("from") == kv.end() ? PixelRGBA8(0, 0, 0, 255) : parseRGBA(kv.at("from"), true);
+        const PixelRGBA8 toColor = kv.find("to") == kv.end() ? PixelRGBA8(255, 255, 255, 255) : parseRGBA(kv.at("to"), true);
+
+        if (type == "linear") {
+            const std::pair<double, double> fromPoint = kv.find("from_point") == kv.end()
+                                                             ? std::pair<double, double>(0.0, 0.0)
+                                                             : parseDoublePair(kv.at("from_point"));
+            const std::pair<double, double> toPoint = kv.find("to_point") == kv.end()
+                                                           ? std::pair<double, double>(static_cast<double>(layer.image().width() - 1),
+                                                                                      static_cast<double>(layer.image().height() - 1))
+                                                           : parseDoublePair(kv.at("to_point"));
+            applyLinearGradientToLayer(layer, fromColor, toColor, fromPoint.first, fromPoint.second, toPoint.first, toPoint.second);
+            return;
+        }
+
+        if (type == "radial") {
+            const std::pair<double, double> center = kv.find("center") == kv.end()
+                                                          ? std::pair<double, double>(static_cast<double>(layer.image().width()) / 2.0,
+                                                                                     static_cast<double>(layer.image().height()) / 2.0)
+                                                          : parseDoublePair(kv.at("center"));
+            const double defaultRadius = static_cast<double>(std::min(layer.image().width(), layer.image().height())) * 0.5;
+            const double radius = kv.find("radius") == kv.end() ? defaultRadius : std::stod(kv.at("radius"));
+            applyRadialGradientToLayer(layer, fromColor, toColor, center.first, center.second, radius);
+            return;
+        }
+
+        throw std::runtime_error("gradient-layer type must be linear or radial");
+    }
+
+    if (action == "checker-layer") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("checker-layer requires path=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        const int cellWidth = kv.find("cell_width") == kv.end() ? (kv.find("cell") == kv.end() ? 32 : std::stoi(kv.at("cell")))
+                                                                 : std::stoi(kv.at("cell_width"));
+        const int cellHeight = kv.find("cell_height") == kv.end() ? cellWidth : std::stoi(kv.at("cell_height"));
+        const PixelRGBA8 colorA = kv.find("a") == kv.end() ? PixelRGBA8(0, 0, 0, 255) : parseRGBA(kv.at("a"), true);
+        const PixelRGBA8 colorB = kv.find("b") == kv.end() ? PixelRGBA8(255, 255, 255, 255) : parseRGBA(kv.at("b"), true);
+        const int offsetX = kv.find("offset_x") == kv.end() ? 0 : std::stoi(kv.at("offset_x"));
+        const int offsetY = kv.find("offset_y") == kv.end() ? 0 : std::stoi(kv.at("offset_y"));
+        applyCheckerToLayer(layer, cellWidth, cellHeight, colorA, colorB, offsetX, offsetY);
+        return;
+    }
+
+    if (action == "noise-layer") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("noise-layer requires path=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        const std::uint32_t seed = kv.find("seed") == kv.end() ? 1337u : static_cast<std::uint32_t>(std::stoul(kv.at("seed")));
+        const float amount = kv.find("amount") == kv.end() ? 0.2f : std::stof(kv.at("amount"));
+        const bool monochrome = kv.find("monochrome") == kv.end() ? false : parseBoolFlag(kv.at("monochrome"));
+        const bool affectAlpha = kv.find("affect_alpha") == kv.end() ? false : parseBoolFlag(kv.at("affect_alpha"));
+        applyNoiseToLayer(layer, seed, amount, monochrome, affectAlpha);
+        return;
     }
 
     if (action == "fill-layer") {
