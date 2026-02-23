@@ -65,6 +65,83 @@ void Drawable::line(int x0, int y0, int x1, int y1, const Color& color) {
     }
 }
 
+void Drawable::beginPath() {
+    m_path.clear();
+}
+
+void Drawable::moveTo(float x, float y) {
+    SubPath sub;
+    sub.points.push_back({x, y});
+    m_path.push_back(sub);
+}
+
+void Drawable::lineTo(float x, float y) {
+    if (m_path.empty()) {
+        moveTo(x, y);
+        return;
+    }
+    if (m_path.back().closed) {
+        moveTo(x, y);
+        return;
+    }
+    m_path.back().points.push_back({x, y});
+}
+
+void Drawable::closePath() {
+    if (m_path.empty()) {
+        return;
+    }
+    SubPath& sub = m_path.back();
+    if (sub.points.size() < 2) {
+        sub.closed = true;
+        return;
+    }
+    const auto& first = sub.points.front();
+    const auto& last = sub.points.back();
+    if (first.first != last.first || first.second != last.second) {
+        sub.points.push_back(first);
+    }
+    sub.closed = true;
+}
+
+void Drawable::strokeSegment(float x0, float y0, float x1, float y1, const Color& color) {
+    line(static_cast<int>(std::lround(x0)),
+         static_cast<int>(std::lround(y0)),
+         static_cast<int>(std::lround(x1)),
+         static_cast<int>(std::lround(y1)),
+         color);
+}
+
+void Drawable::stroke(const Color& color) {
+    for (const SubPath& sub : m_path) {
+        if (sub.points.size() < 2) {
+            continue;
+        }
+        for (std::size_t i = 1; i < sub.points.size(); ++i) {
+            strokeSegment(sub.points[i - 1].first, sub.points[i - 1].second,
+                          sub.points[i].first, sub.points[i].second, color);
+        }
+    }
+}
+
+void Drawable::fillPath(const Color& color) {
+    for (const SubPath& sub : m_path) {
+        if (sub.points.size() < 3) {
+            continue;
+        }
+        std::vector<std::pair<int, int>> polygonPoints;
+        polygonPoints.reserve(sub.points.size());
+        for (const auto& p : sub.points) {
+            polygonPoints.push_back({static_cast<int>(std::lround(p.first)),
+                                     static_cast<int>(std::lround(p.second))});
+        }
+        if (polygonPoints.front() != polygonPoints.back()) {
+            polygonPoints.push_back(polygonPoints.front());
+        }
+        fillPolygon(polygonPoints, color);
+    }
+}
+
 void Drawable::rect(int x, int y, int width, int height, const Color& color) {
     int left = 0;
     int top = 0;

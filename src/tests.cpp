@@ -357,6 +357,33 @@ void testDrawablePolylineAndPolygon() {
     require(outside.r == 0 && outside.g == 0 && outside.b == 0, "fillPolygon should not affect outside pixels");
 }
 
+void testDrawablePathStrokeAndFill() {
+    PNGImage strokeImg(12, 12, Color(0, 0, 0));
+    Drawable ds(strokeImg);
+    ds.beginPath();
+    ds.moveTo(2.0f, 2.0f);
+    ds.lineTo(9.0f, 2.0f);
+    ds.lineTo(9.0f, 9.0f);
+    ds.closePath();
+    ds.stroke(Color(255, 0, 0));
+    const Color strokeEdge = strokeImg.getPixel(5, 2);
+    const Color strokeInside = strokeImg.getPixel(7, 6);
+    require(strokeEdge.r == 255 && strokeEdge.g == 0 && strokeEdge.b == 0, "stroke should draw closed path edge");
+    require(strokeInside.r == 0 && strokeInside.g == 0 && strokeInside.b == 0, "stroke should not fill path interior");
+
+    PNGImage fillImg(12, 12, Color(0, 0, 0));
+    Drawable df(fillImg);
+    df.beginPath();
+    df.moveTo(2.0f, 2.0f);
+    df.lineTo(9.0f, 2.0f);
+    df.lineTo(6.0f, 9.0f);
+    df.fillPath(Color(0, 255, 0));
+    const Color fillInside = fillImg.getPixel(6, 5);
+    const Color fillOutside = fillImg.getPixel(1, 1);
+    require(fillInside.r == 0 && fillInside.g == 255 && fillInside.b == 0, "fillPath should fill open path as closed polygon");
+    require(fillOutside.r == 0 && fillOutside.g == 0 && fillOutside.b == 0, "fillPath should not affect outside pixels");
+}
+
 void testRasterResizeFilters() {
     PNGImage src(2, 2, Color(0, 0, 0));
     src.setPixel(0, 0, Color(0, 0, 0));
@@ -543,6 +570,7 @@ int main() {
         testDrawableRectAndFillRect();
         testDrawableEllipseAndFillEllipse();
         testDrawablePolylineAndPolygon();
+        testDrawablePathStrokeAndFill();
         testRasterResizeFilters();
         testEffectsOnRasterImage();
         testEffectsOnLayerImageBuffer();
