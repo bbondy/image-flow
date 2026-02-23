@@ -16,6 +16,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cmath>
+#include <deque>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -520,6 +521,400 @@ void applyThresholdToLayer(Layer& layer, int threshold, const PixelRGBA8& lo, co
     }
 }
 
+float luma01(const PixelRGBA8& p) {
+    return (0.299f * static_cast<float>(p.r) +
+            0.587f * static_cast<float>(p.g) +
+            0.114f * static_cast<float>(p.b)) / 255.0f;
+}
+
+PixelRGBA8 sampleClamped(const ImageBuffer& image, int x, int y) {
+    const int sx = std::max(0, std::min(image.width() - 1, x));
+    const int sy = std::max(0, std::min(image.height() - 1, y));
+    return image.getPixel(sx, sy);
+}
+
+void applyGaussianBlurToBuffer(ImageBuffer& image, int radius, double sigma) {
+    if (radius <= 0) {
+        return;
+    }
+    const double effectiveSigma = sigma > 0.0 ? sigma : (0.3 * static_cast<double>(radius) + 0.8);
+
+    std::vector<float> kernel(static_cast<std::size_t>(radius * 2 + 1), 0.0f);
+    double sum = 0.0;
+    for (int i = -radius; i <= radius; ++i) {
+        const double x = static_cast<double>(i);
+        const double w = std::exp(-(x * x) / (2.0 * effectiveSigma * effectiveSigma));
+        kernel[static_cast<std::size_t>(i + radius)] = static_cast<float>(w);
+        sum += w;
+    }
+    for (float& w : kernel) {
+        w = static_cast<float>(w / sum);
+    }
+
+    ImageBuffer tmp(image.width(), image.height(), PixelRGBA8(0, 0, 0, 0));
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            double ar = 0.0;
+            double ag = 0.0;
+            double ab = 0.0;
+            double aa = 0.0;
+            for (int k = -radius; k <= radius; ++k) {
+                const PixelRGBA8 s = sampleClamped(image, x + k, y);
+                const float w = kernel[static_cast<std::size_t>(k + radius)];
+                ar += w * static_cast<double>(s.r);
+                ag += w * static_cast<double>(s.g);
+                ab += w * static_cast<double>(s.b);
+                aa += w * static_cast<double>(s.a);
+            }
+            tmp.setPixel(x, y, PixelRGBA8(clampByte(static_cast<int>(std::lround(ar))),
+                                          clampByte(static_cast<int>(std::lround(ag))),
+                                          clampByte(static_cast<int>(std::lround(ab))),
+                                          clampByte(static_cast<int>(std::lround(aa)))));
+        }
+    }
+
+    ImageBuffer out(image.width(), image.height(), PixelRGBA8(0, 0, 0, 0));
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            double ar = 0.0;
+            double ag = 0.0;
+            double ab = 0.0;
+            double aa = 0.0;
+            for (int k = -radius; k <= radius; ++k) {
+                const PixelRGBA8 s = sampleClamped(tmp, x, y + k);
+                const float w = kernel[static_cast<std::size_t>(k + radius)];
+                ar += w * static_cast<double>(s.r);
+                ag += w * static_cast<double>(s.g);
+                ab += w * static_cast<double>(s.b);
+                aa += w * static_cast<double>(s.a);
+            }
+            out.setPixel(x, y, PixelRGBA8(clampByte(static_cast<int>(std::lround(ar))),
+                                          clampByte(static_cast<int>(std::lround(ag))),
+                                          clampByte(static_cast<int>(std::lround(ab))),
+                                          clampByte(static_cast<int>(std::lround(aa)))));
+        }
+    }
+    image = out;
+}
+
+void applySobelToBuffer(ImageBuffer& image, bool keepAlpha) {
+    static const int kx[3][3] = {
+        {-1, 0, 1},
+        {-2, 0, 2},
+        {-1, 0, 1}};
+    static const int ky[3][3] = {
+        {-1, -2, -1},
+        {0, 0, 0},
+        {1, 2, 1}};
+
+    ImageBuffer out(image.width(), image.height(), PixelRGBA8(0, 0, 0, 255));
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            double gx = 0.0;
+            double gy = 0.0;
+            for (int j = -1; j <= 1; ++j) {
+                for (int i = -1; i <= 1; ++i) {
+                    const float l = luma01(sampleClamped(image, x + i, y + j));
+                    gx += static_cast<double>(kx[j + 1][i + 1]) * l;
+                    gy += static_cast<double>(ky[j + 1][i + 1]) * l;
+                }
+            }
+            const double mag = std::sqrt(gx * gx + gy * gy);
+            const int m = std::max(0, std::min(255, static_cast<int>(std::lround(255.0 * std::min(1.0, mag / 4.0)))));
+            const std::uint8_t alpha = keepAlpha ? image.getPixel(x, y).a : 255;
+            out.setPixel(x, y, PixelRGBA8(static_cast<std::uint8_t>(m),
+                                          static_cast<std::uint8_t>(m),
+                                          static_cast<std::uint8_t>(m),
+                                          alpha));
+        }
+    }
+    image = out;
+}
+
+void applyCannyToBuffer(ImageBuffer& image, int lowThreshold, int highThreshold, bool keepAlpha) {
+    const int w = image.width();
+    const int h = image.height();
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+
+    std::vector<float> gx(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0.0f);
+    std::vector<float> gy(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0.0f);
+    std::vector<float> mag(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0.0f);
+    std::vector<float> dir(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0.0f);
+    auto idx = [w](int x, int y) { return static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x); };
+
+    static const int kx[3][3] = {
+        {-1, 0, 1},
+        {-2, 0, 2},
+        {-1, 0, 1}};
+    static const int ky[3][3] = {
+        {-1, -2, -1},
+        {0, 0, 0},
+        {1, 2, 1}};
+
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            float sx = 0.0f;
+            float sy = 0.0f;
+            for (int j = -1; j <= 1; ++j) {
+                for (int i = -1; i <= 1; ++i) {
+                    const float l = luma01(sampleClamped(image, x + i, y + j));
+                    sx += static_cast<float>(kx[j + 1][i + 1]) * l;
+                    sy += static_cast<float>(ky[j + 1][i + 1]) * l;
+                }
+            }
+            gx[idx(x, y)] = sx;
+            gy[idx(x, y)] = sy;
+            mag[idx(x, y)] = std::sqrt(sx * sx + sy * sy);
+            dir[idx(x, y)] = std::atan2(sy, sx);
+        }
+    }
+
+    std::vector<float> nms(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0.0f);
+    for (int y = 1; y + 1 < h; ++y) {
+        for (int x = 1; x + 1 < w; ++x) {
+            const float angle = dir[idx(x, y)] * 180.0f / 3.14159265358979323846f;
+            float norm = angle;
+            if (norm < 0.0f) {
+                norm += 180.0f;
+            }
+
+            float q = 0.0f;
+            float r = 0.0f;
+            if ((norm >= 0.0f && norm < 22.5f) || (norm >= 157.5f && norm <= 180.0f)) {
+                q = mag[idx(x + 1, y)];
+                r = mag[idx(x - 1, y)];
+            } else if (norm >= 22.5f && norm < 67.5f) {
+                q = mag[idx(x + 1, y - 1)];
+                r = mag[idx(x - 1, y + 1)];
+            } else if (norm >= 67.5f && norm < 112.5f) {
+                q = mag[idx(x, y + 1)];
+                r = mag[idx(x, y - 1)];
+            } else {
+                q = mag[idx(x - 1, y - 1)];
+                r = mag[idx(x + 1, y + 1)];
+            }
+
+            const float m = mag[idx(x, y)];
+            nms[idx(x, y)] = (m >= q && m >= r) ? m : 0.0f;
+        }
+    }
+
+    const float low = static_cast<float>(std::max(0, std::min(255, lowThreshold))) / 255.0f;
+    const float high = static_cast<float>(std::max(0, std::min(255, highThreshold))) / 255.0f;
+
+    std::vector<std::uint8_t> edges(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0);
+    std::deque<std::pair<int, int>> q;
+    for (int y = 1; y + 1 < h; ++y) {
+        for (int x = 1; x + 1 < w; ++x) {
+            const float m = nms[idx(x, y)];
+            if (m >= high) {
+                edges[idx(x, y)] = 255;
+                q.emplace_back(x, y);
+            } else if (m >= low) {
+                edges[idx(x, y)] = 128;
+            }
+        }
+    }
+
+    while (!q.empty()) {
+        const auto [x, y] = q.front();
+        q.pop_front();
+        for (int j = -1; j <= 1; ++j) {
+            for (int i = -1; i <= 1; ++i) {
+                if (i == 0 && j == 0) {
+                    continue;
+                }
+                const int nx = x + i;
+                const int ny = y + j;
+                if (nx < 0 || nx >= w || ny < 0 || ny >= h) {
+                    continue;
+                }
+                std::uint8_t& e = edges[idx(nx, ny)];
+                if (e == 128) {
+                    e = 255;
+                    q.emplace_back(nx, ny);
+                }
+            }
+        }
+    }
+
+    ImageBuffer out(w, h, PixelRGBA8(0, 0, 0, 255));
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const std::uint8_t v = edges[idx(x, y)] == 255 ? 255 : 0;
+            const std::uint8_t alpha = keepAlpha ? image.getPixel(x, y).a : 255;
+            out.setPixel(x, y, PixelRGBA8(v, v, v, alpha));
+        }
+    }
+    image = out;
+}
+
+void applyMorphologyToBuffer(ImageBuffer& image, const std::string& op, int radius, int iterations) {
+    if (radius <= 0 || iterations <= 0) {
+        return;
+    }
+    const bool dilate = op == "dilate";
+    const bool erode = op == "erode";
+    if (!dilate && !erode) {
+        throw std::runtime_error("morphology op must be erode or dilate");
+    }
+
+    for (int iter = 0; iter < iterations; ++iter) {
+        ImageBuffer out(image.width(), image.height(), PixelRGBA8(0, 0, 0, 0));
+        for (int y = 0; y < image.height(); ++y) {
+            for (int x = 0; x < image.width(); ++x) {
+                int bestR = dilate ? 0 : 255;
+                int bestG = dilate ? 0 : 255;
+                int bestB = dilate ? 0 : 255;
+                int bestA = dilate ? 0 : 255;
+                for (int j = -radius; j <= radius; ++j) {
+                    for (int i = -radius; i <= radius; ++i) {
+                        if ((i * i + j * j) > (radius * radius)) {
+                            continue;
+                        }
+                        const PixelRGBA8 s = sampleClamped(image, x + i, y + j);
+                        if (dilate) {
+                            bestR = std::max(bestR, static_cast<int>(s.r));
+                            bestG = std::max(bestG, static_cast<int>(s.g));
+                            bestB = std::max(bestB, static_cast<int>(s.b));
+                            bestA = std::max(bestA, static_cast<int>(s.a));
+                        } else {
+                            bestR = std::min(bestR, static_cast<int>(s.r));
+                            bestG = std::min(bestG, static_cast<int>(s.g));
+                            bestB = std::min(bestB, static_cast<int>(s.b));
+                            bestA = std::min(bestA, static_cast<int>(s.a));
+                        }
+                    }
+                }
+                out.setPixel(x, y, PixelRGBA8(static_cast<std::uint8_t>(bestR),
+                                              static_cast<std::uint8_t>(bestG),
+                                              static_cast<std::uint8_t>(bestB),
+                                              static_cast<std::uint8_t>(bestA)));
+            }
+        }
+        image = out;
+    }
+}
+
+void applyGammaToBuffer(ImageBuffer& image, double gamma) {
+    if (gamma <= 0.0) {
+        throw std::runtime_error("gamma must be > 0");
+    }
+    const double invGamma = 1.0 / gamma;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const PixelRGBA8 src = image.getPixel(x, y);
+            const auto map = [invGamma](std::uint8_t v) {
+                const double n = static_cast<double>(v) / 255.0;
+                return clampByte(static_cast<int>(std::lround(255.0 * std::pow(n, invGamma))));
+            };
+            image.setPixel(x, y, PixelRGBA8(map(src.r), map(src.g), map(src.b), src.a));
+        }
+    }
+}
+
+void applyLevelsToBuffer(ImageBuffer& image,
+                         int inBlack,
+                         int inWhite,
+                         double midGamma,
+                         int outBlack,
+                         int outWhite) {
+    const double inB = static_cast<double>(std::max(0, std::min(255, inBlack)));
+    const double inW = static_cast<double>(std::max(0, std::min(255, inWhite)));
+    if (inW <= inB) {
+        throw std::runtime_error("levels requires in_white > in_black");
+    }
+    if (midGamma <= 0.0) {
+        throw std::runtime_error("levels gamma must be > 0");
+    }
+    const double outB = static_cast<double>(std::max(0, std::min(255, outBlack)));
+    const double outW = static_cast<double>(std::max(0, std::min(255, outWhite)));
+
+    auto mapLevel = [&](std::uint8_t v) -> std::uint8_t {
+        double t = (static_cast<double>(v) - inB) / (inW - inB);
+        t = std::max(0.0, std::min(1.0, t));
+        t = std::pow(t, 1.0 / midGamma);
+        const double out = outB + (outW - outB) * t;
+        return clampByte(static_cast<int>(std::lround(out)));
+    };
+
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const PixelRGBA8 src = image.getPixel(x, y);
+            image.setPixel(x, y, PixelRGBA8(mapLevel(src.r), mapLevel(src.g), mapLevel(src.b), src.a));
+        }
+    }
+}
+
+std::vector<std::pair<int, int>> parseCurvePoints(const std::string& text) {
+    std::vector<std::pair<int, int>> points;
+    const std::vector<std::string> tokens = splitNonEmptyByChar(text, ';');
+    for (const std::string& t : tokens) {
+        const std::pair<int, int> p = parseIntPair(t);
+        points.push_back({std::max(0, std::min(255, p.first)), std::max(0, std::min(255, p.second))});
+    }
+    if (points.size() < 2) {
+        throw std::runtime_error("curve requires at least 2 points");
+    }
+    std::sort(points.begin(), points.end(), [](const auto& a, const auto& b) {
+        return a.first < b.first;
+    });
+    return points;
+}
+
+std::array<std::uint8_t, 256> buildCurveLut(const std::vector<std::pair<int, int>>& points) {
+    std::array<std::uint8_t, 256> lut{};
+    std::size_t seg = 0;
+    for (int x = 0; x <= 255; ++x) {
+        while (seg + 1 < points.size() && x > points[seg + 1].first) {
+            ++seg;
+        }
+        if (seg + 1 >= points.size()) {
+            lut[static_cast<std::size_t>(x)] = static_cast<std::uint8_t>(points.back().second);
+            continue;
+        }
+        const int x0 = points[seg].first;
+        const int y0 = points[seg].second;
+        const int x1 = points[seg + 1].first;
+        const int y1 = points[seg + 1].second;
+        if (x1 == x0) {
+            lut[static_cast<std::size_t>(x)] = static_cast<std::uint8_t>(y1);
+            continue;
+        }
+        const double t = static_cast<double>(x - x0) / static_cast<double>(x1 - x0);
+        const int y = static_cast<int>(std::lround(static_cast<double>(y0) + (static_cast<double>(y1 - y0) * t)));
+        lut[static_cast<std::size_t>(x)] = clampByte(y);
+    }
+    return lut;
+}
+
+void applyCurvesToBuffer(ImageBuffer& image,
+                         const std::array<std::uint8_t, 256>& rgbLut,
+                         const std::array<std::uint8_t, 256>* rLut,
+                         const std::array<std::uint8_t, 256>* gLut,
+                         const std::array<std::uint8_t, 256>* bLut) {
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const PixelRGBA8 src = image.getPixel(x, y);
+            std::uint8_t r = rgbLut[src.r];
+            std::uint8_t g = rgbLut[src.g];
+            std::uint8_t b = rgbLut[src.b];
+            if (rLut) {
+                r = (*rLut)[r];
+            }
+            if (gLut) {
+                g = (*gLut)[g];
+            }
+            if (bLut) {
+                b = (*bLut)[b];
+            }
+            image.setPixel(x, y, PixelRGBA8(r, g, b, src.a));
+        }
+    }
+}
+
 std::vector<std::size_t> parsePathIndices(const std::string& path) {
     if (path.empty() || path[0] != '/') {
         throw std::runtime_error("Path must start with '/': " + path);
@@ -1013,6 +1408,107 @@ void applyOperation(Document& document, const std::string& opSpec) {
             return;
         }
         throw std::runtime_error("Unsupported effect: " + effect);
+    }
+
+    if (action == "gaussian-blur") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("gaussian-blur requires path=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+        const int radius = kv.find("radius") == kv.end() ? 3 : std::stoi(kv.at("radius"));
+        const double sigma = kv.find("sigma") == kv.end() ? 0.0 : std::stod(kv.at("sigma"));
+        applyGaussianBlurToBuffer(target, radius, sigma);
+        return;
+    }
+
+    if (action == "edge-detect") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("edge-detect requires path=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+        const std::string method = kv.find("method") == kv.end() ? "sobel" : toLower(kv.at("method"));
+        const bool keepAlpha = kv.find("keep_alpha") == kv.end() ? true : parseBoolFlag(kv.at("keep_alpha"));
+        if (method == "sobel") {
+            applySobelToBuffer(target, keepAlpha);
+            return;
+        }
+        if (method == "canny") {
+            const int low = kv.find("low") == kv.end() ? 40 : std::stoi(kv.at("low"));
+            const int high = kv.find("high") == kv.end() ? 90 : std::stoi(kv.at("high"));
+            applyCannyToBuffer(target, low, high, keepAlpha);
+            return;
+        }
+        throw std::runtime_error("edge-detect method must be sobel or canny");
+    }
+
+    if (action == "morphology") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("morphology requires path=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+        const std::string op = kv.find("op") == kv.end() ? "dilate" : toLower(kv.at("op"));
+        const int radius = kv.find("radius") == kv.end() ? 1 : std::stoi(kv.at("radius"));
+        const int iterations = kv.find("iterations") == kv.end() ? 1 : std::stoi(kv.at("iterations"));
+        applyMorphologyToBuffer(target, op, radius, iterations);
+        return;
+    }
+
+    if (action == "gamma") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("gamma requires path=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+        const double gamma = kv.find("value") == kv.end() ? (kv.find("gamma") == kv.end() ? 1.0 : std::stod(kv.at("gamma"))) : std::stod(kv.at("value"));
+        applyGammaToBuffer(target, gamma);
+        return;
+    }
+
+    if (action == "levels") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("levels requires path=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+        const int inBlack = kv.find("in_black") == kv.end() ? 0 : std::stoi(kv.at("in_black"));
+        const int inWhite = kv.find("in_white") == kv.end() ? 255 : std::stoi(kv.at("in_white"));
+        const double midGamma = kv.find("gamma") == kv.end() ? 1.0 : std::stod(kv.at("gamma"));
+        const int outBlack = kv.find("out_black") == kv.end() ? 0 : std::stoi(kv.at("out_black"));
+        const int outWhite = kv.find("out_white") == kv.end() ? 255 : std::stoi(kv.at("out_white"));
+        applyLevelsToBuffer(target, inBlack, inWhite, midGamma, outBlack, outWhite);
+        return;
+    }
+
+    if (action == "curves") {
+        if (kv.find("path") == kv.end()) {
+            throw std::runtime_error("curves requires path=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& target = resolveDrawTargetBuffer(layer, kv);
+        const std::vector<std::pair<int, int>> rgbPoints = kv.find("rgb") == kv.end()
+                                                                ? std::vector<std::pair<int, int>>{{0, 0}, {255, 255}}
+                                                                : parseCurvePoints(kv.at("rgb"));
+        const std::array<std::uint8_t, 256> rgbLut = buildCurveLut(rgbPoints);
+        std::array<std::uint8_t, 256> rLut{};
+        std::array<std::uint8_t, 256> gLut{};
+        std::array<std::uint8_t, 256> bLut{};
+        const bool hasR = kv.find("r") != kv.end();
+        const bool hasG = kv.find("g") != kv.end();
+        const bool hasB = kv.find("b") != kv.end();
+        if (hasR) {
+            rLut = buildCurveLut(parseCurvePoints(kv.at("r")));
+        }
+        if (hasG) {
+            gLut = buildCurveLut(parseCurvePoints(kv.at("g")));
+        }
+        if (hasB) {
+            bLut = buildCurveLut(parseCurvePoints(kv.at("b")));
+        }
+        applyCurvesToBuffer(target, rgbLut, hasR ? &rLut : nullptr, hasG ? &gLut : nullptr, hasB ? &bLut : nullptr);
+        return;
     }
 
     if (action == "replace-color") {
