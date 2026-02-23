@@ -20,20 +20,17 @@ make
 
 ## CLI
 ```bash
-./build/bin/iflow help
+./build/bin/image_flow help
 ```
 
 Main commands:
-- `./build/bin/iflow samples`
-- `./build/bin/iflow iflow new --width <w> --height <h> --out <project.iflow>`
-- `./build/bin/iflow iflow info --in <project.iflow>`
-- `./build/bin/iflow iflow render --in <project.iflow> --out <image.{png|bmp|jpg|gif|webp|svg}>`
-- `./build/bin/iflow iflow ops --in <project.iflow> --out <project.iflow> --op "<action key=value ...>" [--op ...] [--render <image.png>]`
-
-If no command is provided, the CLI defaults to `samples`.
+- `./build/bin/image_flow new --width <w> --height <h> --out <project.iflow>`
+- `./build/bin/image_flow info --in <project.iflow>`
+- `./build/bin/image_flow render --in <project.iflow> --out <image.{png|bmp|jpg|gif|webp|svg}>`
+- `./build/bin/image_flow ops --in <project.iflow> --out <project.iflow> --op "<action key=value ...>" [--op ...] [--render <image.png>]`
 
 ### IFLOW Ops
-`iflow ops` applies deterministic edits to an IFLOW document. Useful actions include:
+`image_flow ops` applies deterministic edits to an IFLOW document. Useful actions include:
 - `add-layer`, `add-group`
 - `set-layer`, `set-group`
 - `set-transform` (translate/rotate or matrix)
@@ -44,11 +41,16 @@ If no command is provided, the CLI defaults to `samples`.
 
 Example:
 ```bash
-./build/bin/iflow iflow ops \
+./build/bin/image_flow ops \
   --width 512 --height 512 \
   --out build/output/images/demo.iflow \
   --op "add-layer name=Base fill=0,0,0,255" \
   --op "set-layer path=/0 opacity=0.9"
+```
+
+## Sample Generator
+```bash
+./build/bin/generate_samples
 ```
 
 Example script:
