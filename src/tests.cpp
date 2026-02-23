@@ -750,6 +750,13 @@ void testCLIRejectsConflictingFlagCombinations() {
                         "--op", "add-layer name=L width=2 height=2 fill=0,0,0,0"}) == 1,
             "CLI should reject ops mixing --in with --width/--height");
 }
+
+void testCLIHelpOpsCommand() {
+    require(runCLIArgs({"image_flow", "help", "ops"}) == 0,
+            "CLI should support image_flow help ops");
+    require(runCLIArgs({"image_flow", "ops", "--help"}) == 0,
+            "CLI should support image_flow ops --help");
+}
 } // namespace
 
 int main() {
@@ -785,6 +792,7 @@ int main() {
         testCLIRejectsInvalidNumericInput();
         testCLIOpSupportsQuotedValues();
         testCLIRejectsConflictingFlagCombinations();
+        testCLIHelpOpsCommand();
 
         std::cout << "All tests passed\n";
         return 0;
