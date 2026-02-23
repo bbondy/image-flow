@@ -715,6 +715,41 @@ void testCLIOpSupportsQuotedValues() {
     require(document.node(0).isLayer(), "Quoted-value op should create a layer node");
     require(document.node(0).asLayer().name() == "Layer One", "Quoted layer name should roundtrip correctly");
 }
+
+void testCLIRejectsConflictingFlagCombinations() {
+    const std::string testOutDir = "build/output/test-images";
+    std::filesystem::create_directories(testOutDir);
+    const std::string fromImageOut = testOutDir + "/conflict-from-image.iflow";
+    const std::string fitOut = testOutDir + "/conflict-fit.iflow";
+    const std::string baseOut = testOutDir + "/conflict-base.iflow";
+    const std::string opsOut = testOutDir + "/conflict-ops.iflow";
+    const std::string sampleImage = "samples/tahoe200-finish.webp";
+
+    require(runCLIArgs({"image_flow", "new",
+                        "--from-image", sampleImage,
+                        "--width", "10",
+                        "--height", "10",
+                        "--out", fromImageOut}) == 1,
+            "CLI should reject --from-image combined with --width/--height");
+
+    require(runCLIArgs({"image_flow", "new",
+                        "--width", "10",
+                        "--height", "10",
+                        "--fit", "4x4",
+                        "--out", fitOut}) == 1,
+            "CLI should reject --fit without --from-image");
+
+    require(runCLIArgs({"image_flow", "new", "--width", "2", "--height", "2", "--out", baseOut}) == 0,
+            "CLI should create project used for conflicting ops test");
+
+    require(runCLIArgs({"image_flow", "ops",
+                        "--in", baseOut,
+                        "--width", "2",
+                        "--height", "2",
+                        "--out", opsOut,
+                        "--op", "add-layer name=L width=2 height=2 fill=0,0,0,0"}) == 1,
+            "CLI should reject ops mixing --in with --width/--height");
+}
 } // namespace
 
 int main() {
@@ -749,6 +784,7 @@ int main() {
         testIFLOWSerializationRoundtripPreservesStack();
         testCLIRejectsInvalidNumericInput();
         testCLIOpSupportsQuotedValues();
+        testCLIRejectsConflictingFlagCombinations();
 
         std::cout << "All tests passed\n";
         return 0;

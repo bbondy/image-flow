@@ -2476,6 +2476,10 @@ int runIFLOWOps(const std::vector<std::string>& args) {
     const bool hasHeight = getFlagValue(args, "--height", heightValue);
     const bool hasRender = getFlagValue(args, "--render", renderPath);
     const std::vector<std::string> opSpecs = gatherOps(args);
+    if (hasIn && (hasWidth || hasHeight)) {
+        std::cerr << "Error: --in cannot be combined with --width/--height for ops\n";
+        return 1;
+    }
 
     if (!hasOut || opSpecs.empty() || (!hasIn && (!hasWidth || !hasHeight))) {
         std::cerr << "Usage: image_flow ops --in <project.iflow> --out <project.iflow> --op \"<action key=value ...>\" [--op ...]\n"
@@ -2551,6 +2555,15 @@ int runIFLOWNew(const std::vector<std::string>& args) {
     const bool hasHeight = getFlagValue(args, "--height", heightValue);
     const bool hasFromImage = getFlagValue(args, "--from-image", fromImagePath);
     const bool hasFit = getFlagValue(args, "--fit", fitValue);
+
+    if (hasFromImage && (hasWidth || hasHeight)) {
+        std::cerr << "Error: --from-image cannot be combined with --width/--height\n";
+        return 1;
+    }
+    if (hasFit && !hasFromImage) {
+        std::cerr << "Error: --fit requires --from-image\n";
+        return 1;
+    }
 
     if (!getFlagValue(args, "--out", outPath) || ((hasWidth != hasHeight) || (!hasFromImage && (!hasWidth || !hasHeight)))) {
         std::cerr << "Usage: image_flow new --width <w> --height <h> --out <project.iflow>\n"
