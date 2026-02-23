@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <vector>
 
 namespace {
@@ -366,6 +367,62 @@ void Drawable::fillPolygon(const std::vector<std::pair<int, int>>& points, const
             for (int x = xStart; x <= xEnd; ++x) {
                 m_image.setPixel(x, y, color);
             }
+        }
+    }
+}
+
+void Drawable::floodFill(int x, int y, const Color& color, int tolerance) {
+    if (!m_image.inBounds(x, y)) {
+        return;
+    }
+
+    const int clampedTolerance = std::max(0, std::min(255, tolerance));
+    const Color seed = m_image.getPixel(x, y);
+    if (seed.r == color.r && seed.g == color.g && seed.b == color.b) {
+        return;
+    }
+
+    const auto withinTolerance = [seed, clampedTolerance](const Color& c) {
+        const int dr = std::abs(static_cast<int>(c.r) - static_cast<int>(seed.r));
+        const int dg = std::abs(static_cast<int>(c.g) - static_cast<int>(seed.g));
+        const int db = std::abs(static_cast<int>(c.b) - static_cast<int>(seed.b));
+        return std::max(dr, std::max(dg, db)) <= clampedTolerance;
+    };
+
+    const int w = m_image.width();
+    const int h = m_image.height();
+    std::vector<std::uint8_t> visited(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0);
+    auto indexOf = [w](int px, int py) {
+        return static_cast<std::size_t>(py) * static_cast<std::size_t>(w) + static_cast<std::size_t>(px);
+    };
+
+    std::deque<std::pair<int, int>> queue;
+    queue.push_back({x, y});
+    visited[indexOf(x, y)] = 1;
+
+    while (!queue.empty()) {
+        const auto [cx, cy] = queue.front();
+        queue.pop_front();
+
+        const Color current = m_image.getPixel(cx, cy);
+        if (!withinTolerance(current)) {
+            continue;
+        }
+        m_image.setPixel(cx, cy, color);
+
+        const int offsets[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (const auto& offset : offsets) {
+            const int nx = cx + offset[0];
+            const int ny = cy + offset[1];
+            if (!m_image.inBounds(nx, ny)) {
+                continue;
+            }
+            const std::size_t idx = indexOf(nx, ny);
+            if (visited[idx] != 0) {
+                continue;
+            }
+            visited[idx] = 1;
+            queue.push_back({nx, ny});
         }
     }
 }

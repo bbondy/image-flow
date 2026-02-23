@@ -441,6 +441,19 @@ void testDrawableArcDirectionAndWrap() {
     require(ccwLeft.r == 0 && ccwLeft.g == 255 && ccwLeft.b == 0, "counterclockwise arc should take long sweep");
 }
 
+void testDrawableFloodFill() {
+    PNGImage img(12, 12, Color(0, 0, 0));
+    Drawable d(img);
+    d.rect(2, 2, 8, 8, Color(255, 255, 255));
+    d.floodFill(4, 4, Color(0, 0, 255));
+    const Color inside = img.getPixel(4, 4);
+    const Color border = img.getPixel(2, 2);
+    const Color outside = img.getPixel(1, 1);
+    require(inside.r == 0 && inside.g == 0 && inside.b == 255, "floodFill should fill connected interior");
+    require(border.r == 255 && border.g == 255 && border.b == 255, "floodFill should stop at border");
+    require(outside.r == 0 && outside.g == 0 && outside.b == 0, "floodFill should not leak outside border");
+}
+
 void testRasterResizeFilters() {
     PNGImage src(2, 2, Color(0, 0, 0));
     src.setPixel(0, 0, Color(0, 0, 0));
@@ -630,6 +643,7 @@ int main() {
         testDrawablePathStrokeAndFill();
         testDrawableStrokeStyleControls();
         testDrawableArcDirectionAndWrap();
+        testDrawableFloodFill();
         testRasterResizeFilters();
         testEffectsOnRasterImage();
         testEffectsOnLayerImageBuffer();

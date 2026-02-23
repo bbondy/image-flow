@@ -74,6 +74,7 @@ Binaries:
 - `draw-polyline`
 - `draw-polygon`
 - `draw-fill-polygon`
+- `draw-flood-fill`
 - `draw-circle`
 - `draw-fill-circle`
 - `draw-arc`

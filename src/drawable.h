@@ -44,6 +44,7 @@ public:
     void polyline(const std::vector<std::pair<int, int>>& points, const Color& color);
     void polygon(const std::vector<std::pair<int, int>>& points, const Color& color);
     void fillPolygon(const std::vector<std::pair<int, int>>& points, const Color& color);
+    void floodFill(int x, int y, const Color& color, int tolerance = 0);
     void circle(int cx, int cy, int radius, const Color& color);
     void fillCircle(int cx, int cy, int radius, const Color& color);
     void arc(int cx, int cy, int radius, float startRadians, float endRadians, const Color& color, bool counterclockwise = false);

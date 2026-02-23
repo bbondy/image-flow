@@ -1479,6 +1479,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         DrawPolyline,
         DrawPolygon,
         DrawFillPolygon,
+        DrawFloodFill,
         DrawCircle,
         DrawFillCircle,
         DrawArc,
@@ -1512,6 +1513,7 @@ void applyOperation(Document& document, const std::string& opSpec) {
         {"draw-polyline", ActionType::DrawPolyline},
         {"draw-polygon", ActionType::DrawPolygon},
         {"draw-fill-polygon", ActionType::DrawFillPolygon},
+        {"draw-flood-fill", ActionType::DrawFloodFill},
         {"draw-circle", ActionType::DrawCircle},
         {"draw-fill-circle", ActionType::DrawFillCircle},
         {"draw-arc", ActionType::DrawArc},
@@ -2030,6 +2032,22 @@ void applyOperation(Document& document, const std::string& opSpec) {
         BufferImageView view(targetBuffer, rgba.a, true);
         Drawable drawable(view);
         drawable.fillPolygon(points, Color(rgba.r, rgba.g, rgba.b));
+        return;
+    }
+
+    case ActionType::DrawFloodFill: {
+        if (kv.find("path") == kv.end() || kv.find("x") == kv.end() || kv.find("y") == kv.end() ||
+            kv.find("rgba") == kv.end()) {
+            throw std::runtime_error("draw-flood-fill requires path= x= y= rgba=");
+        }
+        Layer& layer = resolveLayerPath(document, kv.at("path"));
+        ImageBuffer& targetBuffer = resolveDrawTargetBuffer(layer, kv);
+        const int tolerance = kv.find("tolerance") == kv.end() ? 0 : std::stoi(kv.at("tolerance"));
+        const PixelRGBA8 rgba = parseRGBA(kv.at("rgba"), true);
+        BufferImageView view(targetBuffer, rgba.a, true);
+        Drawable drawable(view);
+        drawable.floodFill(std::stoi(kv.at("x")), std::stoi(kv.at("y")),
+                           Color(rgba.r, rgba.g, rgba.b), tolerance);
         return;
     }
 
