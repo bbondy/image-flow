@@ -9,7 +9,8 @@
 
 enum class ResizeFilter {
     Nearest,
-    Bilinear
+    Bilinear,
+    BoxAverage
 };
 
 namespace detail {
@@ -24,6 +25,10 @@ inline float lerp(float a, float b, float t) {
 inline std::uint8_t toByte(float value) {
     float clamped = std::max(0.0f, std::min(value, 255.0f));
     return static_cast<std::uint8_t>(std::lround(clamped));
+}
+
+inline int floorToInt(float value) {
+    return static_cast<int>(std::floor(value));
 }
 } // namespace detail
 
@@ -60,6 +65,60 @@ ImageT resizeImage(const ImageT& source, int newWidth, int newHeight,
                 const float srcX = (static_cast<float>(x) + 0.5f) * scaleX - 0.5f;
                 const int ix = detail::clampInt(static_cast<int>(std::lround(srcX)), 0, srcWidth - 1);
                 output.setPixel(x, y, source.getPixel(ix, iy));
+            }
+            continue;
+        }
+        if (filter == ResizeFilter::BoxAverage) {
+            const float footprintX = std::max(1.0f, scaleX);
+            const float footprintY = std::max(1.0f, scaleY);
+            const float yLeft = srcY - footprintY * 0.5f;
+            const float yRight = srcY + footprintY * 0.5f;
+            const int yStart = detail::clampInt(detail::floorToInt(yLeft - 0.5f), 0, srcHeight - 1);
+            const int yEnd = detail::clampInt(detail::floorToInt(yRight + 0.5f), 0, srcHeight - 1);
+            for (int x = 0; x < newWidth; ++x) {
+                const float srcX = (static_cast<float>(x) + 0.5f) * scaleX - 0.5f;
+                const float xLeft = srcX - footprintX * 0.5f;
+                const float xRight = srcX + footprintX * 0.5f;
+                const int xStart = detail::clampInt(detail::floorToInt(xLeft - 0.5f), 0, srcWidth - 1);
+                const int xEnd = detail::clampInt(detail::floorToInt(xRight + 0.5f), 0, srcWidth - 1);
+
+                float sumR = 0.0f;
+                float sumG = 0.0f;
+                float sumB = 0.0f;
+                float totalWeight = 0.0f;
+                for (int sy = yStart; sy <= yEnd; ++sy) {
+                    const float syMin = static_cast<float>(sy) - 0.5f;
+                    const float syMax = static_cast<float>(sy) + 0.5f;
+                    const float overlapY = std::max(0.0f, std::min(yRight, syMax) - std::max(yLeft, syMin));
+                    if (overlapY <= 0.0f) {
+                        continue;
+                    }
+                    for (int sx = xStart; sx <= xEnd; ++sx) {
+                        const float sxMin = static_cast<float>(sx) - 0.5f;
+                        const float sxMax = static_cast<float>(sx) + 0.5f;
+                        const float overlapX = std::max(0.0f, std::min(xRight, sxMax) - std::max(xLeft, sxMin));
+                        if (overlapX <= 0.0f) {
+                            continue;
+                        }
+                        const float weight = overlapX * overlapY;
+                        const Color& c = source.getPixel(sx, sy);
+                        sumR += static_cast<float>(c.r) * weight;
+                        sumG += static_cast<float>(c.g) * weight;
+                        sumB += static_cast<float>(c.b) * weight;
+                        totalWeight += weight;
+                    }
+                }
+                Color out;
+                if (totalWeight <= 0.0f) {
+                    const int ix = detail::clampInt(static_cast<int>(std::lround(srcX)), 0, srcWidth - 1);
+                    const int iy = detail::clampInt(static_cast<int>(std::lround(srcY)), 0, srcHeight - 1);
+                    out = source.getPixel(ix, iy);
+                } else {
+                    out.r = detail::toByte(sumR / totalWeight);
+                    out.g = detail::toByte(sumG / totalWeight);
+                    out.b = detail::toByte(sumB / totalWeight);
+                }
+                output.setPixel(x, y, out);
             }
             continue;
         }

@@ -87,6 +87,11 @@ int main() {
             std::cerr << "Failed to write smiley_resize_512_nearest.png\n";
             return 1;
         }
+        PNGImage resizedUpBoxAverage = resizeImage(smileyPng, 512, 512, ResizeFilter::BoxAverage);
+        if (!resizedUpBoxAverage.save(outDir + "/smiley_resize_512_box_average.png")) {
+            std::cerr << "Failed to write smiley_resize_512_box_average.png\n";
+            return 1;
+        }
 
         PNGImage directSmiley = example_api::createSmiley256PNG();
         PNGImage layeredSmiley = example_api::createSmiley256LayeredPNG();
@@ -163,6 +168,7 @@ int main() {
         std::cout << "Wrote smiley.bmp, smiley.png, smiley.jpg, smiley.gif, "
                      "smiley.svg, smiley_svg_rasterized_512.png, smiley_copy.bmp, smiley_copy.png, smiley_copy.jpg, smiley_copy.gif, "
                      "smiley_copy.svg, layered_blend.png, smiley_resize_128.png, smiley_resize_512.png, smiley_resize_512_nearest.png, "
+                     "smiley_resize_512_box_average.png, "
                      "smiley_direct.png, smiley_layered.png, and smiley_layer_diff.png ("
                   << bmpDecoded.width() << "x" << bmpDecoded.height() << ")\n";
         std::cout << "Layered vs direct smiley diff: mean=" << meanDiff << " max=" << maxDiff << "\n";

@@ -305,6 +305,12 @@ void testRasterResizeFilters() {
     require(b11.r == 25 && b11.g == 25 && b11.b == 0, "Bilinear default should interpolate center of first quadrant");
     const Color b22 = bilinearDefault.getPixel(2, 2);
     require(b22.r == 75 && b22.g == 75 && b22.b == 0, "Bilinear should interpolate toward bottom-right");
+
+    PNGImage boxAverage = resizeImage(src, 4, 4, ResizeFilter::BoxAverage);
+    const Color a11 = boxAverage.getPixel(1, 1);
+    const Color a22 = boxAverage.getPixel(2, 2);
+    require(a11.r == 25 && a11.g == 25 && a11.b == 0, "BoxAverage should blend nearby pixels when upscaling");
+    require(a22.r == 75 && a22.g == 75 && a22.b == 0, "BoxAverage should keep center region smooth");
 }
 
 void testLayerTransformRotation() {
