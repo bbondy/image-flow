@@ -1,5 +1,6 @@
 #include "example_api.h"
 #include "bmp.h"
+#include "cli.h"
 #include "drawable.h"
 #include "effects.h"
 #include "gif.h"
@@ -60,6 +61,15 @@ DiffStats compareImages(const Image& a, const Image& b) {
     stats.meanAbs = static_cast<double>(sum) / static_cast<double>(stats.pixels * 3);
     stats.maxAbs = maxAbs;
     return stats;
+}
+
+int runCLIArgs(std::vector<std::string> args) {
+    std::vector<char*> argv;
+    argv.reserve(args.size());
+    for (std::string& arg : args) {
+        argv.push_back(arg.data());
+    }
+    return runCLI(static_cast<int>(argv.size()), argv.data());
 }
 
 std::string uniqueTestPath(const std::string& dir, const std::string& stem, const std::string& ext) {
@@ -667,6 +677,28 @@ void testIFLOWSerializationRoundtripPreservesStack() {
         }
     }
 }
+
+void testCLIRejectsInvalidNumericInput() {
+    const std::string testOutDir = "build/output/test-images";
+    std::filesystem::create_directories(testOutDir);
+    const std::string badWidthOut = testOutDir + "/bad-width.iflow";
+    const std::string badRgbaOut = testOutDir + "/bad-rgba.iflow";
+    const std::string goodOut = testOutDir + "/good-cli.iflow";
+
+    require(runCLIArgs({"image_flow", "new", "--width", "10px", "--height", "8", "--out", badWidthOut}) == 1,
+            "CLI should reject non-integer width values");
+
+    require(runCLIArgs({"image_flow", "ops",
+                        "--width", "2",
+                        "--height", "2",
+                        "--out", badRgbaOut,
+                        "--op", "add-layer name=L width=2 height=2 fill=0,0,0,0",
+                        "--op", "fill-layer path=/0 rgba=300,0,0,255"}) == 1,
+            "CLI should reject RGBA channels outside byte range");
+
+    require(runCLIArgs({"image_flow", "new", "--width", "3", "--height", "2", "--out", goodOut}) == 0,
+            "CLI should accept valid integer width/height");
+}
 } // namespace
 
 int main() {
@@ -699,6 +731,7 @@ int main() {
         testGroupedLayerOffsetAndVisibility();
         testGroupedLayerOpacityAffectsComposite();
         testIFLOWSerializationRoundtripPreservesStack();
+        testCLIRejectsInvalidNumericInput();
 
         std::cout << "All tests passed\n";
         return 0;
