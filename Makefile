@@ -2,8 +2,9 @@ CXX := c++
 CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -O2
 ARCH := $(shell uname -m)
 
-TARGET := smiley
-TEST_TARGET := tests
+BIN_DIR := build/bin
+TARGET := $(BIN_DIR)/samples
+TEST_TARGET := $(BIN_DIR)/tests
 OBJ_DIR := build/intermediate/$(ARCH)
 CORE_SRCS := src/bmp.cpp src/png.cpp src/jpg.cpp src/gif.cpp src/svg.cpp src/webp.cpp src/drawable.cpp src/example_api.cpp src/layer.cpp src/effects.cpp
 APP_SRCS := src/main.cpp $(CORE_SRCS)
@@ -14,13 +15,20 @@ TEST_OBJS := $(patsubst %.cpp,$(OBJ_DIR)/%.o,$(TEST_SRCS))
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -Isrc -o $@ $(OBJS)
 
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
 
 $(TEST_TARGET): $(TEST_OBJS)
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -Isrc -o $@ $(TEST_OBJS)
+
+run: run-sample
+
+run-sample: $(TARGET)
+	./$(TARGET)
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
@@ -29,4 +37,4 @@ $(OBJ_DIR)/%.o: %.cpp
 clean:
 	rm -rf build $(TARGET) $(TEST_TARGET)
 
-.PHONY: all clean test
+.PHONY: all clean test run run-sample
