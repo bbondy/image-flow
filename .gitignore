@@ -1,7 +1,6 @@
 # Build artifacts
 *.o
 build/
-tests
 
 # Generated images
 *.bmp
